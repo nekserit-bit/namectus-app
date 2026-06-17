@@ -1,0 +1,12 @@
+{
+  "Rossi/R1": {
+    "action": "👁 Наблюдать",
+    "date": "18.06.2026 02:33",
+    "status": "done"
+  },
+  "Solodent/S1": {
+    "action": "💳 Пополнить",
+    "date": "18.06.2026 02:32",
+    "status": "pending"
+  }
+}
