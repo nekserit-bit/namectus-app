@@ -25,13 +25,10 @@ HISTORY_FILE = "action_history.json"
 def open_campaign_browser(source, campaign_id):
     """Открывает браузер с прямой ссылкой на кампанию в рекламном кабинете"""
     if source == "google":
-        # Google Ads: прямая ссылка на кампанию
         url = f"https://ads.google.com/aw/campaigns?campaignId={campaign_id}&ocid={campaign_id}"
     elif source == "yandex":
-        # Яндекс.Директ: прямая ссылка на кампанию
         url = f"https://direct.yandex.ru/registered/main.pl?cmd=edit-campaign&id={campaign_id}"
     elif source == "meta":
-        # Meta Ads Manager
         url = f"https://www.facebook.com/adsmanager/manage/campaigns?act=0&campaign_id={campaign_id}"
     else:
         url = "https://google.com"
@@ -199,7 +196,7 @@ class NamectusApp:
 
         tk.Button(
             self.root,
-            text=" Пересканировать",
+            text="🔄 Пересканировать",
             command=self.refresh,
             font=("Segoe UI", 10)
         ).pack(pady=8)
@@ -215,7 +212,7 @@ class NamectusApp:
         except Exception as e:
             tk.Label(
                 self.scroll_frame,
-                text=f" Ошибка загрузки: {e}",
+                text=f"❌ Ошибка загрузки: {e}",
                 fg="red",
                 bg="#f5f7fa"
             ).pack(pady=30)
@@ -294,11 +291,13 @@ class NamectusApp:
 
     def take_action(self, label, action):
         """Обработка нажатия на кнопку действия"""
-        if "Пополнить" in action:
+        data = self.campaign_data.get(label, {})
+        source = data.get("source", "")
+        campaign_id = data.get("campaign_id", "")
+        
+        # Если действие связано с переходом в кабинет
+        if "Пополнить" in action or "Исправить" in action:
             # Открываем рекламный кабинет
-            data = self.campaign_data.get(label, {})
-            source = data.get("source", "")
-            campaign_id = data.get("campaign_id", "")
             open_campaign_browser(source, campaign_id)
             
             # Записываем в историю
@@ -309,13 +308,16 @@ class NamectusApp:
             }
             save_history(self.history)
             self.status_labels[label].config(text=f"🌐 Открыт кабинет. Ожидание подтверждения...")
-            messagebox.showinfo(
-                "Namectus",
-                f"Открыт рекламный кабинет {source.upper()}.\n\n"
-                f"После пополнения бюджета нажмите '✅ Отметить пополненным'."
-            )
+            
+            msg = f"Открыт рекламный кабинет {source.upper()}.\n\n"
+            if "Пополнить" in action:
+                msg += "После пополнения бюджета нажмите '✅ Отметить пополненным'."
+            else:
+                msg += "Внесите изменения в настройках кампании."
+            
+            messagebox.showinfo("Namectus", msg)
         else:
-            # Обычное действие
+            # Обычное действие (Наблюдать, Игнорировать, Закрыть)
             self.history[label] = {
                 "action": action,
                 "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
@@ -342,7 +344,7 @@ class NamectusApp:
         else:
             messagebox.showwarning(
                 "Namectus",
-                f"Сначала нажмите ' Пополнить', чтобы открыть рекламный кабинет."
+                f"Сначала нажмите '💳 Пополнить', чтобы открыть рекламный кабинет."
             )
 
 if __name__ == "__main__":
