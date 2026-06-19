@@ -186,9 +186,13 @@ with col_btn:
 
 # Загрузка данных
 try:
-    df = pd.read_csv("data_storage.csv")
+    # Читаем данные из Google Sheets
+    SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+    df = pd.read_csv(url)
     results = analyze_campaigns(df)
     results = filter_hidden(results, st.session_state.history, st.session_state.pending_top_ups)
+
 except Exception as e:
     st.error(f"Ошибка загрузки данных: {e}")
     st.stop()
