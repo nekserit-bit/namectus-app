@@ -128,4 +128,275 @@ def analyze_campaigns(df: pd.DataFrame):
 
             r_cost, r_conv = recent_df["cost"].sum(), recent_df["conversions"].sum()
             r_clicks, r_impr = recent_df["clicks"].sum(), recent_df["impressions"].sum()
-            h_cost, h
+            h_cost, h_conv = history_df["cost"].mean(), history_df["conversions"].mean()
+
+            r_cpa = r_cost / max(r_conv, 1)
+            h_cpa = h_cost / max(h_conv, 1) if h_conv > 0 else 0
+            r_ctr = r_clicks / max(r_impr, 1)
+
+            signals = []
+            
+            if r_cost > 0 and r_conv == 0:
+                signals.append("critical")
+            elif h_conv > 0 and r_cpa > h_cpa * 1.8:
+                signals.append("critical")
+            elif h_conv > 0 and r_conv < h_conv * (1 - thresholds["conversion_drop_pct"]):
+                signals.append("warning")
+            elif r_ctr < thresholds["ctr_min"]:
+                signals.append("warning")
+            elif r_ctr > thresholds["ctr_max"]:
+                signals.append("warning")
+
+            if "critical" in signals:
+                results.append({
+                    **base, 
+                    "status": "critical",
+                    "problem": "Резкий рост CPA или нет конверсий", 
+                    "actions": ["Исправить", "Наблюдать", "Игнорировать"]
+                })
+            elif "warning" in signals:
+                results.append({
+                    **base, 
+                    "status": "warning",
+                    "problem": "Низкий CTR или падение конверсий", 
+                    "actions": ["Исправить", "Наблюдать", "Игнорировать"]
+                })
+            else:
+                results.append({
+                    **base, 
+                    "status": "ok",
+                    "problem": "", 
+                    "actions": []
+                })
+    return results
+
+# =========================
+# ФИЛЬТР СКРЫТЫХ КАМПАНИЙ
+# =========================
+def filter_hidden(results, history, pending_top_ups):
+    now = datetime.now()
+    filtered = []
+    for res in results:
+        label = res["label"]
+        if label in history:
+            h = history[label]
+            if "hide_until" in h:
+                try:
+                    hide_until = datetime.strptime(h["hide_until"], "%d.%m.%Y %H:%M")
+                    if now < hide_until:
+                        continue
+                except:
+                    pass
+            if h.get("action") == "Закрыть" and h.get("session_closed"):
+                continue
+        filtered.append(res)
+    return filtered
+
+# =========================
+# КАРТОЧКА КАМПАНИИ
+# =========================
+def render_campaign_card(res, label, history, is_pending):
+    st.markdown("---")
+    st.markdown(f"**{label}** [{res['source'].upper()}]")
+    
+    if history.get("action"):
+        st.caption(f"✅ {history['action']} ({history.get('date', '')})")
+
+    if res.get("problem"):
+        if res["status"] == "stopped":
+            st.error(f"⚫ {res['problem']}")
+        elif res["status"] == "critical":
+            st.error(f"🔴 {res['problem']}")
+        elif res["status"] == "warning":
+            st.warning(f"🟠 {res['problem']}")
+        elif res["status"] == "info":
+            st.info(f"🟡 {res['problem']}")
+
+    if is_pending:
+        url = get_campaign_url(res["source"], res["campaign_id"])
+        st.markdown(f"[🔗 Открыть рекламный кабинет]({url})")
+        
+        action_text = "Пополнить" if "бюджет" in res.get("problem", "").lower() else "Исправить"
+        st.markdown(f"**После действия нажмите:**")
+        
+        if st.button("✅ Отметить выполненным", key=f"{label}_confirm"):
+            st.session_state.history[label] = {
+                "action": f"{action_text} выполнено",
+                "date": datetime.now().strftime("%d.%m.%Y %H:%M")
+            }
+            st.session_state.pending_top_ups[label] = False
+            save_history(st.session_state.history)
+            st.rerun()
+    else:
+        if res.get("actions"):
+            cols = st.columns(len(res["actions"]))
+            for i, act in enumerate(res["actions"]):
+                with cols[i]:
+                    if st.button(act, key=f"{label}_{act}"):
+                        if act in ["Пополнить", "Исправить"]:
+                            st.session_state.pending_top_ups[label] = True
+                            st.session_state.history[label] = {
+                                "action": f"Ожидает: {act}",
+                                "date": datetime.now().strftime("%d.%m.%Y %H:%M")
+                            }
+                        elif act == "Игнорировать":
+                            hide_until = datetime.now() + timedelta(hours=24)
+                            st.session_state.history[label] = {
+                                "action": act,
+                                "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+                                "hide_until": hide_until.strftime("%d.%m.%Y %H:%M")
+                            }
+                        elif act == "Закрыть":
+                            st.session_state.history[label] = {
+                                "action": act,
+                                "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+                                "session_closed": True
+                            }
+                        else:
+                            st.session_state.history[label] = {
+                                "action": act,
+                                "date": datetime.now().strftime("%d.%m.%Y %H:%M")
+                            }
+                        save_history(st.session_state.history)
+                        st.rerun()
+
+# =========================
+# ИНТЕРФЕЙС STREAMLIT
+# =========================
+st.set_page_config(page_title="Namectus", page_icon="📊", layout="wide")
+
+# Инициализация session_state
+if "history" not in st.session_state:
+    st.session_state.history = load_history()
+if "pending_top_ups" not in st.session_state:
+    st.session_state.pending_top_ups = {}
+
+# Шапка
+st.markdown(f"# 📅 NAMECTUS | {datetime.now().strftime('%d.%m.%Y')}")
+st.markdown("---")
+
+# Кнопка пересканирования
+if st.button("🔄 Пересканировать"):
+    for label, hist in st.session_state.history.items():
+        if "session_closed" in hist:
+            del hist["session_closed"]
+        if "hide_until" in hist:
+            del hist["hide_until"]
+    save_history(st.session_state.history)
+    st.rerun()
+
+# Загрузка данных
+try:
+    SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+    df = pd.read_csv(url)
+    results = analyze_campaigns(df)
+    results = filter_hidden(results, st.session_state.history, st.session_state.pending_top_ups)
+except Exception as e:
+    st.error(f"Ошибка загрузки данных: {e}")
+    st.stop()
+
+if not results:
+    st.success("✅ Все кампании скрыты или в норме. Отличная работа!")
+    st.stop()
+
+# =========================
+# ГРУППИРОВКА
+# =========================
+stopped = [r for r in results if r["status"] == "stopped"]
+critical = [r for r in results if r["status"] == "critical"]
+warning = [r for r in results if r["status"] == "warning"]
+info = [r for r in results if r["status"] == "info"]
+ok = [r for r in results if r["status"] == "ok"]
+data_accumulation = [r for r in results if r["status"] == "data_accumulation"]
+
+# =========================
+# ВИЗУАЛЬНАЯ ПАНЕЛЬ С КРУЖКАМИ
+# =========================
+st.markdown("### 🔍 Состояние кампаний")
+
+# Создаём 5 колонок для кружков
+col1, col2, col3, col4, col5 = st.columns(5)
+
+with col1:
+    if st.button(f"⚫ {len(stopped)}", key="btn_stopped", use_container_width=True):
+        st.session_state["show_stopped"] = not st.session_state.get("show_stopped", False)
+    st.caption("Остановлены")
+
+with col2:
+    if st.button(f"🔴 {len(critical)}", key="btn_critical", use_container_width=True):
+        st.session_state["show_critical"] = not st.session_state.get("show_critical", False)
+    st.caption("Критично")
+
+with col3:
+    if st.button(f"🟠 {len(warning)}", key="btn_warning", use_container_width=True):
+        st.session_state["show_warning"] = not st.session_state.get("show_warning", False)
+    st.caption("Требует внимания")
+
+with col4:
+    if st.button(f"🟡 {len(info)}", key="btn_info", use_container_width=True):
+        st.session_state["show_info"] = not st.session_state.get("show_info", False)
+    st.caption("Плановое")
+
+with col5:
+    if st.button(f"🟢 {len(ok)}", key="btn_ok", use_container_width=True):
+        st.session_state["show_ok"] = not st.session_state.get("show_ok", False)
+    st.caption("Всё в порядке")
+
+st.markdown("---")
+
+# =========================
+# РАСКРЫВАЮЩИЕСЯ РАЗДЕЛЫ
+# =========================
+
+# ⚫ ОСТАНОВЛЕНЫ
+if stopped and st.session_state.get("show_stopped", False):
+    st.markdown("### ⚫ ОСТАНОВЛЕНЫ (Бюджет исчерпан)")
+    for res in stopped:
+        label = res["label"]
+        history = st.session_state.history.get(label, {})
+        is_pending = st.session_state.pending_top_ups.get(label, False)
+        render_campaign_card(res, label, history, is_pending)
+
+# 🔴 КРИТИЧЕСКИЕ
+if critical and st.session_state.get("show_critical", False):
+    st.markdown("### 🔴 КРИТИЧЕСКИЕ (Срочно!)")
+    for res in critical:
+        label = res["label"]
+        history = st.session_state.history.get(label, {})
+        is_pending = st.session_state.pending_top_ups.get(label, False)
+        render_campaign_card(res, label, history, is_pending)
+
+# 🟠 ПРЕДУПРЕЖДЕНИЯ
+if warning and st.session_state.get("show_warning", False):
+    st.markdown("### 🟠 ТРЕБУЕТ ВНИМАНИЯ")
+    for res in warning:
+        label = res["label"]
+        history = st.session_state.history.get(label, {})
+        is_pending = st.session_state.pending_top_ups.get(label, False)
+        render_campaign_card(res, label, history, is_pending)
+
+# 🟡 ИНФОРМАЦИЯ
+if info and st.session_state.get("show_info", False):
+    st.markdown("### 🟡 ПЛАНОВОЕ ЗАВЕРШЕНИЕ БЮДЖЕТА")
+    for res in info:
+        label = res["label"]
+        history = st.session_state.history.get(label, {})
+        is_pending = st.session_state.pending_top_ups.get(label, False)
+        render_campaign_card(res, label, history, is_pending)
+
+# 🟢 ВСЁ В ПОРЯДКЕ
+if ok and st.session_state.get("show_ok", False):
+    st.markdown("### 🟢 ВСЁ В ПОРЯДКЕ")
+    for res in ok:
+        label = res["label"]
+        st.markdown(f"- **{label}**: Работает стабильно")
+
+# ⚪ НАКОПЛЕНИЕ ДАННЫХ
+if data_accumulation:
+    st.markdown("### ⚪ НАКОПЛЕНИЕ ДАННЫХ")
+    for res in data_accumulation:
+        st.markdown(f"- **{res['label']}**: {res['problem']}")
+
+st.markdown("---")
+st.caption("Namectus v0.4 | Dashboard")
