@@ -3,6 +3,14 @@ import pandas as pd
 import json
 import os
 from datetime import datetime, timedelta
+import requests
+
+# =========================
+# ЯНДЕКС OAUTH НАСТРОЙКИ
+# =========================
+YANDEX_CLIENT_ID = "aba6d279d3544aaab91a4e04990c5b47"
+YANDEX_CLIENT_SECRET = "926ae5fe918444138b2428181245f842"
+YANDEX_REDIRECT_URI = "https://namectus-app.onrender.com/callback"
 
 # =========================
 # КОНФИГУРАЦИЯ
@@ -259,10 +267,54 @@ def render_campaign_card(res, label, history, is_pending):
                             }
                         save_history(st.session_state.history)
                         st.rerun()
+# =========================
+# ОБРАБОТКА ВХОДА ЧЕРЕЗ ЯНДЕКС
+# =========================
+def exchange_code_for_token(code):
+    """Обменивает временный code на постоянный токен"""
+    token_url = "https://oauth.yandex.ru/token"
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": YANDEX_CLIENT_ID,
+        "client_secret": YANDEX_CLIENT_SECRET
+    }
+    try:
+        response = requests.post(token_url, data=data)
+        if response.status_code == 200:
+            token_data = response.json()
+            return token_data.get("access_token")
+    except Exception as e:
+        st.error(f"Ошибка получения токена: {e}")
+    return None
+
+# Проверяем, есть ли code в URL (после входа через Яндекс)
+query_params = st.experimental_get_query_params()
+if "code" in query_params and "yandex_token" not in st.session_state:
+    code = query_params["code"][0]
+    token = exchange_code_for_token(code)
+    if token:
+        st.session_state["yandex_token"] = token
+        st.success("✅ Успешно подключено к Яндекс.Директ!")
+        # Убираем code из URL
+        st.experimental_set_query_params()
+        st.rerun()
 
 # =========================
 # ИНТЕРФЕЙС STREAMLIT
 # =========================
+
+# =========================
+# ЯНДЕКС OAUTH ЛОГИКА
+# =========================
+def get_yandex_auth_url():
+    """Возвращает ссылку для входа через Яндекс"""
+    return (
+        f"https://oauth.yandex.ru/authorize?"
+        f"response_type=code&"
+        f"client_id={YANDEX_CLIENT_ID}&"
+        f"redirect_uri={YANDEX_REDIRECT_URI}"
+    )
 st.set_page_config(page_title="Namectus", page_icon="📊", layout="wide")
 
 # Инициализация session_state
@@ -274,6 +326,19 @@ if "pending_top_ups" not in st.session_state:
 # Шапка
 st.markdown(f"# 📅 NAMECTUS | {datetime.now().strftime('%d.%m.%Y')}")
 st.markdown("---")
+
+# Кнопка входа через Яндекс
+if "yandex_token" not in st.session_state:
+    auth_url = get_yandex_auth_url()
+    st.markdown(f"### 🔐 Подключите рекламный кабинет")
+    st.markdown(f"[Войти через Яндекс]({auth_url})")
+    st.caption("После входа Namectus сможет автоматически получать данные из Яндекс.Директ")
+    st.markdown("---")
+else:
+    st.success("✅ Вы подключены к Яндекс.Директ")
+    if st.button("Выйти из аккаунта"):
+        del st.session_state["yandex_token"]
+        st.rerun()
 
 # Кнопка пересканирования
 if st.button("🔄 Пересканировать"):
