@@ -267,6 +267,7 @@ def render_campaign_card(res, label, history, is_pending):
                             }
                         save_history(st.session_state.history)
                         st.rerun()
+
 # =========================
 # ОБРАБОТКА ВХОДА ЧЕРЕЗ ЯНДЕКС
 # =========================
@@ -284,25 +285,11 @@ def exchange_code_for_token(code):
         if response.status_code == 200:
             token_data = response.json()
             return token_data.get("access_token")
+        else:
+            st.error(f"Ошибка: {response.status_code} - {response.text}")
     except Exception as e:
         st.error(f"Ошибка получения токена: {e}")
     return None
-
-# Проверяем, есть ли code в URL (после входа через Яндекс)
-query_params = st.experimental_get_query_params()
-if "code" in query_params and "yandex_token" not in st.session_state:
-    code = query_params["code"][0]
-    token = exchange_code_for_token(code)
-    if token:
-        st.session_state["yandex_token"] = token
-        st.success("✅ Успешно подключено к Яндекс.Директ!")
-        # Убираем code из URL
-        st.experimental_set_query_params()
-        st.rerun()
-
-# =========================
-# ИНТЕРФЕЙС STREAMLIT
-# =========================
 
 # =========================
 # ЯНДЕКС OAUTH ЛОГИКА
@@ -315,6 +302,10 @@ def get_yandex_auth_url():
         f"client_id={YANDEX_CLIENT_ID}&"
         f"redirect_uri={YANDEX_REDIRECT_URI}"
     )
+
+# =========================
+# ИНТЕРФЕЙС STREAMLIT
+# =========================
 st.set_page_config(page_title="Namectus", page_icon="📊", layout="wide")
 
 # Инициализация session_state
@@ -322,6 +313,17 @@ if "history" not in st.session_state:
     st.session_state.history = load_history()
 if "pending_top_ups" not in st.session_state:
     st.session_state.pending_top_ups = {}
+
+# Проверяем, есть ли code в URL (после входа через Яндекс)
+query_params = st.query_params
+if "code" in query_params and "yandex_token" not in st.session_state:
+    code = query_params["code"]
+    token = exchange_code_for_token(code)
+    if token:
+        st.session_state["yandex_token"] = token
+        st.success("✅ Успешно подключено к Яндекс.Директ!")
+        st.query_params.clear()
+        st.rerun()
 
 # Шапка
 st.markdown(f"# 📅 NAMECTUS | {datetime.now().strftime('%d.%m.%Y')}")
@@ -464,4 +466,4 @@ if data_accumulation:
         st.markdown(f"- **{res['label']}**: {res['problem']}")
 
 st.markdown("---")
-st.caption("Namectus v0.4 | Dashboard")
+st.caption("Namectus v0.5 | Dashboard")
