@@ -4,13 +4,15 @@ import json
 import os
 from datetime import datetime, timedelta
 import requests
+from dotenv import load_dotenv
 
 # =========================
-# ЯНДЕКС OAUTH НАСТРОЙКИ
+# БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
 # =========================
-YANDEX_CLIENT_ID = "aba6d279d3544aaab91a4e04990c5b47"
-YANDEX_CLIENT_SECRET = "926ae5fe918444138b2428181245f842"
-YANDEX_REDIRECT_URI = "https://namectus-app.onrender.com/callback"
+load_dotenv()
+YANDEX_CLIENT_ID = os.getenv("YANDEX_CLIENT_ID")
+YANDEX_CLIENT_SECRET = os.getenv("YANDEX_CLIENT_SECRET")
+YANDEX_REDIRECT_URI = os.getenv("YANDEX_REDIRECT_URI", "https://namectus-app.onrender.com/callback")
 
 # =========================
 # КОНФИГУРАЦИЯ
@@ -77,7 +79,8 @@ def analyze_campaigns(df: pd.DataFrame):
                 "problem": f"Доступно только {total_days} дней данных (нужно минимум {periods['min_data_days']})",
                 "actions": ["Наблюдать", "Закрыть"],
                 "source": source, 
-                "campaign_id": campaign_id
+                "campaign_id": campaign_id,
+                "project": project
             })
             continue
 
@@ -95,7 +98,8 @@ def analyze_campaigns(df: pd.DataFrame):
         base = {
             "label": f"{project} / {campaign}", 
             "source": source, 
-            "campaign_id": campaign_id
+            "campaign_id": campaign_id,
+            "project": project
         }
 
         # ПРИОРИТЕТ 1: Бюджет
@@ -304,15 +308,42 @@ def get_yandex_auth_url():
     )
 
 # =========================
+# ФУНКЦИЯ ДЛЯ ГРУППИРОВКИ ПО ПРОЕКТАМ
+# =========================
+def render_grouped_by_projects(items, section_name):
+    """Группирует кампании по проектам"""
+    if not items:
+        return
+    
+    # Группируем по проектам
+    projects = {}
+    for item in items:
+        project = item.get("project", "Без проекта")
+        if project not in projects:
+            projects[project] = []
+        projects[project].append(item)
+    
+    # Показываем по проектам
+    for project, project_items in projects.items():
+        st.markdown(f"#### 📁 {project}")
+        for res in project_items:
+            label = res["label"]
+            history = st.session_state.history.get(label, {})
+            is_pending = st.session_state.pending_top_ups.get(label, False)
+            render_campaign_card(res, label, history, is_pending)
+
+# =========================
 # ИНТЕРФЕЙС STREAMLIT
 # =========================
-st.set_page_config(page_title="Namectus", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Namectus", page_icon="", layout="wide")
 
 # Инициализация session_state
 if "history" not in st.session_state:
     st.session_state.history = load_history()
 if "pending_top_ups" not in st.session_state:
     st.session_state.pending_top_ups = {}
+if "show_section" not in st.session_state:
+    st.session_state.show_section = {}
 
 # Проверяем, есть ли code в URL (после входа через Яндекс)
 query_params = st.query_params
@@ -342,15 +373,23 @@ else:
         del st.session_state["yandex_token"]
         st.rerun()
 
-# Кнопка пересканирования
-if st.button("🔄 Пересканировать"):
-    for label, hist in st.session_state.history.items():
-        if "session_closed" in hist:
-            del hist["session_closed"]
-        if "hide_until" in hist:
-            del hist["hide_until"]
-    save_history(st.session_state.history)
-    st.rerun()
+# Кнопки управления
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("🔄 Пересканировать", use_container_width=True):
+        for label, hist in st.session_state.history.items():
+            if "session_closed" in hist:
+                del hist["session_closed"]
+            if "hide_until" in hist:
+                del hist["hide_until"]
+        save_history(st.session_state.history)
+        st.session_state.show_section = {}
+        st.rerun()
+
+with col2:
+    if st.button("🔽 Свернуть всё", use_container_width=True):
+        st.session_state.show_section = {}
+        st.rerun()
 
 # Загрузка данных
 try:
@@ -368,7 +407,7 @@ if not results:
     st.stop()
 
 # =========================
-# ГРУППИРОВКА
+# ГРУППИРОВКА ПО СТАТУСАМ
 # =========================
 stopped = [r for r in results if r["status"] == "stopped"]
 critical = [r for r in results if r["status"] == "critical"]
@@ -378,37 +417,110 @@ ok = [r for r in results if r["status"] == "ok"]
 data_accumulation = [r for r in results if r["status"] == "data_accumulation"]
 
 # =========================
-# ВИЗУАЛЬНАЯ ПАНЕЛЬ С КРУЖКАМИ
+# ОГРОМНЫЕ КАРТОЧКИ (НОВЫЙ ДИЗАЙН)
 # =========================
 st.markdown("### 🔍 Состояние кампаний")
 
-# Создаём 5 колонок для кружков
-col1, col2, col3, col4, col5 = st.columns(5)
+# CSS для одинаковых карточек
+st.markdown("""
+<style>
+.big-card {
+    background: white;
+    border-radius: 20px;
+    padding: 15px 10px;
+    text-align: center;
+    cursor: pointer;
+    border: 3px solid #e0e0e0;
+    transition: all 0.3s;
+    height: 220px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+}
+.big-card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+.big-number {
+    font-size: 60px;
+    font-weight: bold;
+    margin: 0;
+    line-height: 1;
+}
+.big-label {
+    font-size: 18px;
+    margin-top: 15px;
+    color: #666;
+    font-weight: 500;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Создаём 6 ОГРОМНЫХ карточек
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
-    if st.button(f"⚫ {len(stopped)}", key="btn_stopped", use_container_width=True):
-        st.session_state["show_stopped"] = not st.session_state.get("show_stopped", False)
-    st.caption("Остановлены")
-
+    st.markdown(f"""
+    <div class="big-card" style="border-color: #333;">
+        <div class="big-number" style="color: #333;">⚫ {len(stopped)}</div>
+        <div class="big-label">Остановлены</div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Открыть остановленные", key="btn_stopped", use_container_width=True):
+        st.session_state.show_section["stopped"] = not st.session_state.show_section.get("stopped", False)
+        
 with col2:
-    if st.button(f"🔴 {len(critical)}", key="btn_critical", use_container_width=True):
-        st.session_state["show_critical"] = not st.session_state.get("show_critical", False)
-    st.caption("Критично")
+    st.markdown(f"""
+    <div class="big-card" style="border-color: #dc3545;">
+        <div class="big-number" style="color: #dc3545;">🔴 {len(critical)}</div>
+        <div class="big-label">Критично</div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Открыть критичные", key="btn_critical", use_container_width=True):
+        st.session_state.show_section["critical"] = not st.session_state.show_section.get("critical", False)
 
 with col3:
-    if st.button(f"🟠 {len(warning)}", key="btn_warning", use_container_width=True):
-        st.session_state["show_warning"] = not st.session_state.get("show_warning", False)
-    st.caption("Требует внимания")
+    st.markdown(f"""
+    <div class="big-card" style="border-color: #fd7e14;">
+        <div class="big-number" style="color: #fd7e14;">🟠 {len(warning)}</div>
+        <div class="big-label">Требует внимания</div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Открыть требующие внимания", key="btn_warning", use_container_width=True):
+        st.session_state.show_section["warning"] = not st.session_state.show_section.get("warning", False)
 
 with col4:
-    if st.button(f"🟡 {len(info)}", key="btn_info", use_container_width=True):
-        st.session_state["show_info"] = not st.session_state.get("show_info", False)
-    st.caption("Плановое")
+    st.markdown(f"""
+    <div class="big-card" style="border-color: #ffc107;">
+        <div class="big-number" style="color: #ffc107;">🟡 {len(info)}</div>
+        <div class="big-label">Плановое</div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Открыть плановые", key="btn_info", use_container_width=True):
+        st.session_state.show_section["info"] = not st.session_state.show_section.get("info", False)
 
 with col5:
-    if st.button(f"🟢 {len(ok)}", key="btn_ok", use_container_width=True):
-        st.session_state["show_ok"] = not st.session_state.get("show_ok", False)
-    st.caption("Всё в порядке")
+    st.markdown(f"""
+    <div class="big-card" style="border-color: #28a745;">
+        <div class="big-number" style="color: #28a745;">🟢 {len(ok)}</div>
+        <div class="big-label">Всё в порядке</div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Открыть работающие", key="btn_ok", use_container_width=True):
+        st.session_state.show_section["ok"] = not st.session_state.show_section.get("ok", False)
+
+with col6:
+    st.markdown(f"""
+    <div class="big-card" style="border-color: #6c757d;">
+        <div class="big-number" style="color: #6c757d;">⚪ {len(data_accumulation)}</div>
+        <div class="big-label">Накопление данных</div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Открыть накопление", key="btn_data_acc", use_container_width=True):
+        st.session_state.show_section["data_accumulation"] = not st.session_state.show_section.get("data_accumulation", False)
 
 st.markdown("---")
 
@@ -416,54 +528,37 @@ st.markdown("---")
 # РАСКРЫВАЮЩИЕСЯ РАЗДЕЛЫ
 # =========================
 
-# ⚫ ОСТАНОВЛЕНЫ
-if stopped and st.session_state.get("show_stopped", False):
+#  ОСТАНОВЛЕНЫ
+if stopped and st.session_state.show_section.get("stopped", False):
     st.markdown("### ⚫ ОСТАНОВЛЕНЫ (Бюджет исчерпан)")
-    for res in stopped:
-        label = res["label"]
-        history = st.session_state.history.get(label, {})
-        is_pending = st.session_state.pending_top_ups.get(label, False)
-        render_campaign_card(res, label, history, is_pending)
+    render_grouped_by_projects(stopped, "stopped")
 
 # 🔴 КРИТИЧЕСКИЕ
-if critical and st.session_state.get("show_critical", False):
+if critical and st.session_state.show_section.get("critical", False):
     st.markdown("### 🔴 КРИТИЧЕСКИЕ (Срочно!)")
-    for res in critical:
-        label = res["label"]
-        history = st.session_state.history.get(label, {})
-        is_pending = st.session_state.pending_top_ups.get(label, False)
-        render_campaign_card(res, label, history, is_pending)
+    render_grouped_by_projects(critical, "critical")
 
 # 🟠 ПРЕДУПРЕЖДЕНИЯ
-if warning and st.session_state.get("show_warning", False):
-    st.markdown("### 🟠 ТРЕБУЕТ ВНИМАНИЯ")
-    for res in warning:
-        label = res["label"]
-        history = st.session_state.history.get(label, {})
-        is_pending = st.session_state.pending_top_ups.get(label, False)
-        render_campaign_card(res, label, history, is_pending)
+if warning and st.session_state.show_section.get("warning", False):
+    st.markdown("###  ТРЕБУЕТ ВНИМАНИЯ")
+    render_grouped_by_projects(warning, "warning")
 
 # 🟡 ИНФОРМАЦИЯ
-if info and st.session_state.get("show_info", False):
-    st.markdown("### 🟡 ПЛАНОВОЕ ЗАВЕРШЕНИЕ БЮДЖЕТА")
-    for res in info:
-        label = res["label"]
-        history = st.session_state.history.get(label, {})
-        is_pending = st.session_state.pending_top_ups.get(label, False)
-        render_campaign_card(res, label, history, is_pending)
+if info and st.session_state.show_section.get("info", False):
+    st.markdown("###  ПЛАНОВОЕ ЗАВЕРШЕНИЕ БЮДЖЕТА")
+    render_grouped_by_projects(info, "info")
 
 # 🟢 ВСЁ В ПОРЯДКЕ
-if ok and st.session_state.get("show_ok", False):
-    st.markdown("### 🟢 ВСЁ В ПОРЯДКЕ")
+if ok and st.session_state.show_section.get("ok", False):
+    st.markdown("###  ВСЁ В ПОРЯДКЕ")
     for res in ok:
         label = res["label"]
         st.markdown(f"- **{label}**: Работает стабильно")
 
 # ⚪ НАКОПЛЕНИЕ ДАННЫХ
-if data_accumulation:
+if data_accumulation and st.session_state.show_section.get("data_accumulation", False):
     st.markdown("### ⚪ НАКОПЛЕНИЕ ДАННЫХ")
-    for res in data_accumulation:
-        st.markdown(f"- **{res['label']}**: {res['problem']}")
+    render_grouped_by_projects(data_accumulation, "data_accumulation")
 
 st.markdown("---")
-st.caption("Namectus v0.5 | Dashboard")
+st.caption("Namectus v0.7 | Dashboard с группировкой по проектам")
