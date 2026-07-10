@@ -6,6 +6,11 @@ from datetime import datetime, timedelta
 import requests
 from dotenv import load_dotenv
 
+# Импорты...
+from dotenv import load_dotenv
+
+st.write("🚨 DEBUG 000 - Файл загружается!")  # ← ДОБАВИТЬ ЗДЕСЬ!
+
 # =========================
 # БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
 # =========================
@@ -58,13 +63,44 @@ def save_history(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # =========================
+# УНИВЕРСАЛЬНОЕ ХРАНЕНИЕ ТОКЕНОВ
+# =========================
+TOKENS_FILE = "tokens.json"
+
+def save_token(source, token):
+    """Сохраняет токен для любого источника (yandex, google, meta)"""
+    st.write(f"🔍 DEBUG save_token: Вызвана для {source}")  # ← ДОБАВИТЬ!
+    tokens = load_all_tokens()
+    tokens[source] = {
+        "token": token,
+        "saved_at": datetime.now().strftime("%d.%m.%Y %H:%M")
+    }
+    with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(tokens, f, ensure_ascii=False, indent=2)
+    st.write(f"🔍 DEBUG save_token: Файл {TOKENS_FILE} сохранён!")  # ← ДОБАВИТЬ!
+
+def load_token(source):
+    """Загружает токен для конкретного источника"""
+    tokens = load_all_tokens()
+    return tokens.get(source, {}).get("token")
+
+def load_all_tokens():
+    """Загружает все токены из файла"""
+    if os.path.exists(TOKENS_FILE):
+        try:
+            with open(TOKENS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+# =========================
 # ЯДРО АНАЛИЗА
 # =========================
 def analyze_campaigns(df: pd.DataFrame):
     results = []
     periods = CONFIG["periods"]
     thresholds = CONFIG["thresholds"]
-    messages = CONFIG["messages"]
 
     for (project, campaign), camp_df in df.groupby(["project", "campaign"]):
         camp_df = camp_df.sort_values("date").reset_index(drop=True)
@@ -84,7 +120,6 @@ def analyze_campaigns(df: pd.DataFrame):
             })
             continue
 
-        # Читаем бюджет из таблицы
         try:
             budget_limit = camp_df["budget"].iloc[0]
         except:
@@ -102,7 +137,6 @@ def analyze_campaigns(df: pd.DataFrame):
             "project": project
         }
 
-        # ПРИОРИТЕТ 1: Бюджет
         if remaining <= 0 or days_left <= 0:
             results.append({
                 **base, 
@@ -132,7 +166,6 @@ def analyze_campaigns(df: pd.DataFrame):
                 "actions": ["Пополнить", "Наблюдать", "Игнорировать"]
             })
         else:
-            # ПРИОРИТЕТ 2: Метрики
             recent_df = camp_df.tail(periods["recent_days"])
             history_df = camp_df.iloc[:-periods["recent_days"]]
             if len(history_df) < 3:
@@ -218,7 +251,7 @@ def render_campaign_card(res, label, history, is_pending):
         if res["status"] == "stopped":
             st.error(f"⚫ {res['problem']}")
         elif res["status"] == "critical":
-            st.error(f"🔴 {res['problem']}")
+            st.error(f" {res['problem']}")
         elif res["status"] == "warning":
             st.warning(f"🟠 {res['problem']}")
         elif res["status"] == "info":
@@ -315,7 +348,6 @@ def render_grouped_by_projects(items, section_name):
     if not items:
         return
     
-    # Группируем по проектам
     projects = {}
     for item in items:
         project = item.get("project", "Без проекта")
@@ -323,9 +355,8 @@ def render_grouped_by_projects(items, section_name):
             projects[project] = []
         projects[project].append(item)
     
-    # Показываем по проектам
     for project, project_items in projects.items():
-        st.markdown(f"#### 📁 {project}")
+        st.markdown(f"####  {project}")
         for res in project_items:
             label = res["label"]
             history = st.session_state.history.get(label, {})
@@ -333,9 +364,47 @@ def render_grouped_by_projects(items, section_name):
             render_campaign_card(res, label, history, is_pending)
 
 # =========================
+# ТЕСТ API ЯНДЕКС.ДИРЕКТ
+# =========================
+def fetch_yandex_test_data(token):
+    """Тестовая функция для получения данных из API Яндекс.Директ"""
+    url = "https://api.direct.yandex.com/json/v5/reports"
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept-Language": "ru",
+        "processingMode": "auto"
+    }
+    
+    body = {
+        "params": {
+            "SelectionCriteria": {},
+            "FieldNames": ["CampaignName", "Impressions", "Clicks", "Cost", "Conversions"],
+            "DateRangeType": "LAST_7_DAYS",
+            "ReportName": "NamectusTestReport",
+            "ReportType": "CAMPAIGN_PERFORMANCE_REPORT"
+        }
+    }
+    
+    try:
+        response = requests.post(url, json=body, headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "error" in data:
+                return f"Ошибка API: {data['error']}"
+            if "data" in data:
+                return data["data"]
+            return "Запрос принят, но данных нет (или отчет еще генерируется)"
+        else:
+            return f"HTTP Ошибка: {response.status_code} - {response.text}"
+    except Exception as e:
+        return f"Исключение: {e}"
+
+# =========================
 # ИНТЕРФЕЙС STREAMLIT
 # =========================
-st.set_page_config(page_title="Namectus", page_icon="", layout="wide")
+st.set_page_config(page_title="Namectus", page_icon="📊", layout="wide")
 
 # Инициализация session_state
 if "history" not in st.session_state:
@@ -345,19 +414,32 @@ if "pending_top_ups" not in st.session_state:
 if "show_section" not in st.session_state:
     st.session_state.show_section = {}
 
+# 🔥 Автоматически загружаем токен, если он сохранён
+if "yandex_token" not in st.session_state:
+    saved_token = load_token("yandex")
+    if saved_token:
+        st.session_state["yandex_token"] = saved_token
+        st.rerun()
+
 # Проверяем, есть ли code в URL (после входа через Яндекс)
 query_params = st.query_params
 if "code" in query_params and "yandex_token" not in st.session_state:
+    st.write("🔍 DEBUG: Код получен из URL!")  # ← ДОБАВИТЬ!
     code = query_params["code"]
     token = exchange_code_for_token(code)
     if token:
+        st.write("🔍 DEBUG: Токен получен от Яндекса!")  # ← ДОБАВИТЬ!
         st.session_state["yandex_token"] = token
-        st.success("✅ Успешно подключено к Яндекс.Директ!")
+        save_token("yandex", token)
+        st.write("🔍 DEBUG: Токен сохранён в файл!")  # ← ДОБАВИТЬ!
+        st.success("✅ Успешно подключено к Яндекс.Директ! Токен сохранён.")
         st.query_params.clear()
         st.rerun()
+    else:
+        st.error("❌ ОШИБКА: Токен не получен!")  # ← ДОБАВИТЬ!
 
 # Шапка
-st.markdown(f"# 📅 NAMECTUS | {datetime.now().strftime('%d.%m.%Y')}")
+st.markdown(f"#  NAMECTUS | {datetime.now().strftime('%d.%m.%Y')}")
 st.markdown("---")
 
 # Кнопка входа через Яндекс
@@ -369,14 +451,34 @@ if "yandex_token" not in st.session_state:
     st.markdown("---")
 else:
     st.success("✅ Вы подключены к Яндекс.Директ")
-    if st.button("Выйти из аккаунта"):
-        del st.session_state["yandex_token"]
-        st.rerun()
+    st.write("🔍 DEBUG 111 - Код обновился!") 
+    # Кнопку выхода убрали из шапки
+
+# ТЕСТОВЫЙ БЛОК: ПОЛУЧЕНИЕ ДАННЫХ ИЗ API
+if "yandex_token" in st.session_state:
+    st.markdown("---")
+    st.markdown("### 🧪 Тест API Яндекс.Директ")
+    
+    if st.button("🚀 Запросить данные из API"):
+        with st.spinner("Яндекс думает..."):
+            raw_data = fetch_yandex_test_data(st.session_state["yandex_token"])
+            
+        if isinstance(raw_data, str):
+            st.error(raw_data)
+        else:
+            st.success("✅ Данные получены!")
+            st.json(raw_data)
+            
+            if "Rows" in raw_data:
+                rows = raw_data["Rows"]
+                if rows:
+                    df_test = pd.DataFrame([row["Cells"] for row in rows])
+                    st.dataframe(df_test)
 
 # Кнопки управления
 col1, col2 = st.columns(2)
 with col1:
-    if st.button("🔄 Пересканировать", use_container_width=True):
+    if st.button(" Пересканировать", use_container_width=True):
         for label, hist in st.session_state.history.items():
             if "session_closed" in hist:
                 del hist["session_closed"]
@@ -417,11 +519,10 @@ ok = [r for r in results if r["status"] == "ok"]
 data_accumulation = [r for r in results if r["status"] == "data_accumulation"]
 
 # =========================
-# ОГРОМНЫЕ КАРТОЧКИ (НОВЫЙ ДИЗАЙН)
+# ОГРОМНЫЕ КАРТОЧКИ
 # =========================
 st.markdown("### 🔍 Состояние кампаний")
 
-# CSS для одинаковых карточек
 st.markdown("""
 <style>
 .big-card {
@@ -459,7 +560,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Создаём 6 ОГРОМНЫХ карточек
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
@@ -485,7 +585,7 @@ with col2:
 with col3:
     st.markdown(f"""
     <div class="big-card" style="border-color: #fd7e14;">
-        <div class="big-number" style="color: #fd7e14;">🟠 {len(warning)}</div>
+        <div class="big-number" style="color: #fd7e14;"> {len(warning)}</div>
         <div class="big-label">Требует внимания</div>
     </div>
     """, unsafe_allow_html=True)
@@ -515,7 +615,7 @@ with col5:
 with col6:
     st.markdown(f"""
     <div class="big-card" style="border-color: #6c757d;">
-        <div class="big-number" style="color: #6c757d;">⚪ {len(data_accumulation)}</div>
+        <div class="big-number" style="color: #6c757d;"> {len(data_accumulation)}</div>
         <div class="big-label">Накопление данных</div>
     </div>
     """, unsafe_allow_html=True)
@@ -528,37 +628,40 @@ st.markdown("---")
 # РАСКРЫВАЮЩИЕСЯ РАЗДЕЛЫ
 # =========================
 
-#  ОСТАНОВЛЕНЫ
 if stopped and st.session_state.show_section.get("stopped", False):
-    st.markdown("### ⚫ ОСТАНОВЛЕНЫ (Бюджет исчерпан)")
+    st.markdown("###  ОСТАНОВЛЕНЫ (Бюджет исчерпан)")
     render_grouped_by_projects(stopped, "stopped")
 
-# 🔴 КРИТИЧЕСКИЕ
 if critical and st.session_state.show_section.get("critical", False):
     st.markdown("### 🔴 КРИТИЧЕСКИЕ (Срочно!)")
     render_grouped_by_projects(critical, "critical")
 
-# 🟠 ПРЕДУПРЕЖДЕНИЯ
 if warning and st.session_state.show_section.get("warning", False):
-    st.markdown("###  ТРЕБУЕТ ВНИМАНИЯ")
+    st.markdown("### 🟠 ТРЕБУЕТ ВНИМАНИЯ")
     render_grouped_by_projects(warning, "warning")
 
-# 🟡 ИНФОРМАЦИЯ
 if info and st.session_state.show_section.get("info", False):
-    st.markdown("###  ПЛАНОВОЕ ЗАВЕРШЕНИЕ БЮДЖЕТА")
+    st.markdown("### 🟡 ПЛАНОВОЕ ЗАВЕРШЕНИЕ БЮДЖЕТА")
     render_grouped_by_projects(info, "info")
 
-# 🟢 ВСЁ В ПОРЯДКЕ
 if ok and st.session_state.show_section.get("ok", False):
-    st.markdown("###  ВСЁ В ПОРЯДКЕ")
+    st.markdown("### 🟢 ВСЁ В ПОРЯДКЕ")
     for res in ok:
         label = res["label"]
         st.markdown(f"- **{label}**: Работает стабильно")
 
-# ⚪ НАКОПЛЕНИЕ ДАННЫХ
 if data_accumulation and st.session_state.show_section.get("data_accumulation", False):
-    st.markdown("### ⚪ НАКОПЛЕНИЕ ДАННЫХ")
+    st.markdown("###  НАКОПЛЕНИЕ ДАННЫХ")
     render_grouped_by_projects(data_accumulation, "data_accumulation")
 
 st.markdown("---")
-st.caption("Namectus v0.7 | Dashboard с группировкой по проектам")
+st.caption("Namectus v0.8 | Dashboard с группировкой по проектам")
+
+# Техническая кнопка сброса токена
+if "yandex_token" in st.session_state:
+    st.markdown("---")
+    if st.button("🔧 Сбросить подключение к Яндексу", key="reset_token"):
+        del st.session_state["yandex_token"]
+        if os.path.exists(TOKENS_FILE):
+            os.remove(TOKENS_FILE)
+        st.rerun()
