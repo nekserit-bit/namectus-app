@@ -459,142 +459,138 @@ if "yandex_token" in st.session_state:
                     df_test = pd.DataFrame([row["Cells"] for row in rows])
                     st.dataframe(df_test)
 
-# Кнопки управления
-col1, col2 = st.columns(2)
-with col1:
-    if st.button(" Пересканировать", use_container_width=True):
-        for label, hist in st.session_state.history.items():
-            if "session_closed" in hist:
-                del hist["session_closed"]
-            if "hide_until" in hist:
-                del hist["hide_until"]
-        save_history(st.session_state.history)
-        st.session_state.show_section = {}
-        st.rerun()
-
-with col2:
-    if st.button("🔽 Свернуть всё", use_container_width=True):
-        st.session_state.show_section = {}
-        st.rerun()
-
-# Загрузка данных
-try:
-    SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
-    df = pd.read_csv(url)
-    results = analyze_campaigns(df)
-    results = filter_hidden(results, st.session_state.history, st.session_state.pending_top_ups)
-except Exception as e:
-    st.error(f"Ошибка загрузки данных: {e}")
-    st.stop()
-
-if not results:
-    st.success("✅ Все кампании скрыты или в норме. Отличная работа!")
-    st.stop()
-
 # =========================
-# ГРУППИРОВКА ПО СТАТУСАМ
+# ЧИСТЫЙ ЭКРАН ДО СКАНИРОВАНИЯ
 # =========================
-stopped = [r for r in results if r["status"] == "stopped"]
-critical = [r for r in results if r["status"] == "critical"]
-warning = [r for r in results if r["status"] == "warning"]
-info = [r for r in results if r["status"] == "info"]
-ok = [r for r in results if r["status"] == "ok"]
-data_accumulation = [r for r in results if r["status"] == "data_accumulation"]
+if "scan_results" not in st.session_state:
+    st.session_state.scan_results = None
 
-# =========================
-# НОВЫЙ ГЛАВНЫЙ ЭКРАН (3 СОСТОЯНИЯ)
-# =========================
-st.markdown("### 🔍 Состояние кампаний")
-
-# Собираем все реальные проблемы в одну кучу
-real_problems = stopped + critical + warning + info
-has_problems = len(real_problems) > 0
-only_accumulation = len(data_accumulation) > 0 and not has_problems
-
-# Состояние 1: Всё отлично
-if not has_problems and not only_accumulation:
-    st.success("✅ Всё отлично! Проблем не обнаружено.")
-
-# Состояние 2: Идёт накопление данных
-elif only_accumulation:
-    st.info("⚪ Идёт накопление данных. Пока рано делать выводы.")
-
-# Состояние 3: Есть проблема
-else:
-    st.warning(f"⚠ Есть проблема (найдено: {len(real_problems)})")
+if st.session_state.scan_results is None:
+    st.markdown("### 👋 Добро пожаловать в Namectus")
+    st.markdown("Нажмите кнопку ниже, чтобы проверить состояние ваших рекламных кампаний.")
     
-    # Кнопка, которая раскроет список
-    if st.button("👉 Открыть подробности", key="btn_show_problems"):
-        st.session_state.show_problems = True
-        st.session_state.group_by = None 
+    if st.button("🔍 Сканировать", use_container_width=True, type="primary"):
+        with st.spinner("Анализируем данные..."):
+            try:
+                # Временно читаем из Google Таблицы для теста
+                SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
+                url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+                df = pd.read_csv(url)
+                
+                results = analyze_campaigns(df)
+                results = filter_hidden(results, st.session_state.history, st.session_state.pending_top_ups)
+                
+                st.session_state.scan_results = results
+                st.session_state.show_problems = False
+                st.session_state.group_by = None
+                st.rerun()
+                
+            except Exception as e:
+                import traceback
+                error_detail = traceback.format_exc()
+                print(f"!!! ПОЛНАЯ ОШИБКА: {error_detail}")
+                st.error(f"Ошибка загрузки данных: {e}")
+                st.stop()
 
-st.markdown("---")
+# =========================
+# ЭКРАН ПОСЛЕ СКАНИРОВАНИЯ
+# =========================
+if st.session_state.scan_results is not None:
+    results = st.session_state.scan_results
+    
+    # Разделяем на категории
+    stopped = [r for r in results if r["status"] == "stopped"]
+    critical = [r for r in results if r["status"] == "critical"]
+    warning = [r for r in results if r["status"] == "warning"]
+    info = [r for r in results if r["status"] == "info"]
+    ok = [r for r in results if r["status"] == "ok"]
+    data_accumulation = [r for r in results if r["status"] == "data_accumulation"]
+    
+    real_problems = stopped + critical + warning + info
+    has_problems = len(real_problems) > 0
+    only_accumulation = len(data_accumulation) > 0 and not has_problems
 
-# =========================
-# РАСКРЫВАЮЩИЕСЯ РАЗДЕЛЫ
-# =========================
-# =========================
-# ВТОРОЕ ОКНО: ВЫБОР ГРУППИРОВКИ
-# =========================
-if st.session_state.get("show_problems", False) and has_problems:
-    
-    # Показываем две маленькие кнопки выбора
-    st.markdown("### Как посмотреть?")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("📁 По проектам", key="btn_group_projects", use_container_width=True):
-            st.session_state.group_by = "projects"
-    
-    with col2:
-        if st.button("⚠ По важности", key="btn_group_priority", use_container_width=True):
-            st.session_state.group_by = "priority"
-    
-    st.markdown("---")
-    
-    # Показываем список в зависимости от выбора
-    if st.session_state.get("group_by") == "projects":
-        st.markdown("### 📁 Список по проектам")
-        if critical:
-            st.markdown("#### 🔴 Критично")
-            render_grouped_by_projects(critical, "critical")
-        if warning or info:
-            st.markdown("#### 🟡 Требует внимания")
-            render_grouped_by_projects(warning + info, "warning")
-        if stopped:
-            st.markdown("#### ⚫ Остановлены")
-            render_grouped_by_projects(stopped, "stopped")
+    # Состояние 1: Всё отлично
+    if not has_problems and not only_accumulation:
+        st.success("✅ Всё отлично! Проблем не обнаружено.")
+        if st.button("🔄 Сканировать заново", use_container_width=True):
+            st.session_state.scan_results = None
+            st.rerun()
+
+    # Состояние 2: Идёт накопление данных
+    elif only_accumulation:
+        st.info("⚪ Идёт накопление данных. Пока рано делать выводы.")
+        if st.button("🔄 Сканировать заново", use_container_width=True):
+            st.session_state.scan_results = None
+            st.rerun()
+
+    # Состояние 3: Есть проблема
+    else:
+        st.warning(f"⚠ Есть проблема (найдено: {len(real_problems)})")
+        
+        if not st.session_state.get("show_problems", False):
+            if st.button("👉 Открыть подробности", key="btn_show_problems"):
+                st.session_state.show_problems = True
+                st.session_state.group_by = None
+                st.rerun()
+        else:
+            st.markdown("---")
+            st.markdown("### Как посмотреть?")
+            col1, col2 = st.columns(2)
             
-    elif st.session_state.get("group_by") == "priority":
-        st.markdown("### ⚠ Список по важности")
-        if critical:
-            st.markdown("#### 🔴 Критично")
-            render_grouped_by_projects(critical, "critical")
-        if warning or info:
-            st.markdown("#### 🟡 Требует внимания")
-            render_grouped_by_projects(warning + info, "warning")
-        if stopped:
-            st.markdown("#### ⚫ Остановлены")
-            render_grouped_by_projects(stopped, "stopped")
+            with col1:
+                if st.button("📁 По проектам", key="btn_group_projects", use_container_width=True):
+                    st.session_state.group_by = "projects"
+                    st.rerun()
+            
+            with col2:
+                if st.button("⚠ По важности", key="btn_group_priority", use_container_width=True):
+                    st.session_state.group_by = "priority"
+                    st.rerun()
+            
+            st.markdown("---")
+            
+            # Отображение в зависимости от выбора
+            if st.session_state.get("group_by") == "projects":
+                st.markdown("### 📁 Список по проектам")
+                if critical:
+                    st.markdown("#### 🔴 Критично")
+                    render_grouped_by_projects(critical, "critical")
+                if warning or info:
+                    st.markdown("#### 🟡 Требует внимания")
+                    render_grouped_by_projects(warning + info, "warning")
+                if stopped:
+                    st.markdown("#### ⚫ Остановлены")
+                    render_grouped_by_projects(stopped, "stopped")
+                    
+            elif st.session_state.get("group_by") == "priority":
+                st.markdown("### ⚠ Список по важности")
+                if critical:
+                    st.markdown("#### 🔴 Критично")
+                    render_grouped_by_projects(critical, "critical")
+                if warning or info:
+                    st.markdown("#### 🟡 Требует внимания")
+                    render_grouped_by_projects(warning + info, "warning")
+                if stopped:
+                    st.markdown("#### ⚫ Остановлены")
+                    render_grouped_by_projects(stopped, "stopped")
+            
+            # Кнопка сброса, когда всё исправили
+            st.markdown("---")
+            if st.button("✅ Все проблемы решены. Скрыть и начать заново", use_container_width=True):
+                st.session_state.scan_results = None
+                st.session_state.show_problems = False
+                st.session_state.group_by = None
+                st.rerun()
 
+# =========================
+# ТЕХНИЧЕСКАЯ КНОПКА (в самом низу)
+# =========================
 st.markdown("---")
-st.caption("Namectus v0.9 | Помощник, а не дашборд")
-
-# Техническая кнопка сброса токена
 if "yandex_token" in st.session_state:
-    st.markdown("---")
     if st.button("🔧 Сбросить подключение к Яндексу", key="reset_token"):
         del st.session_state["yandex_token"]
         if os.path.exists(TOKENS_FILE):
             os.remove(TOKENS_FILE)
-        st.rerun()
-
-# Техническая кнопка сброса токена
-if "yandex_token" in st.session_state:
-    st.markdown("---")
-    if st.button("🔧 Сбросить подключение к Яндексу", key="reset_token"):
-        del st.session_state["yandex_token"]
-        if os.path.exists(TOKENS_FILE):
-            os.remove(TOKENS_FILE)
+        st.session_state.scan_results = None
         st.rerun()
