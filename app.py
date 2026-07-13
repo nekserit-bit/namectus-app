@@ -85,10 +85,39 @@ def load_all_tokens():
     return {}
 
 # =========================
-# ЯДРО АНАЛИЗА (с namectus_engine)
+# ОБРАБОТКА ВХОДА ЧЕРЕЗ ЯНДЕКС
+# =========================
+def exchange_code_for_token(code):
+    token_url = "https://oauth.yandex.ru/token"
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": YANDEX_CLIENT_ID,
+        "client_secret": YANDEX_CLIENT_SECRET
+    }
+    try:
+        response = requests.post(token_url, data=data)
+        if response.status_code == 200:
+            token_data = response.json()
+            return token_data.get("access_token")
+        else:
+            st.error(f"Ошибка: {response.status_code} - {response.text}")
+    except Exception as e:
+        st.error(f"Ошибка получения токена: {e}")
+    return None
+
+def get_yandex_auth_url():
+    return (
+        f"https://oauth.yandex.ru/authorize?"
+        f"response_type=code&"
+        f"client_id={YANDEX_CLIENT_ID}&"
+        f"redirect_uri={YANDEX_REDIRECT_URI}"
+    )
+
+# =========================
+# ЯДРО АНАЛИЗА
 # =========================
 def analyze_campaigns(df: pd.DataFrame):
-    """Новый мозг: использует NamectusEngine, но возвращает данные в старом формате для UI"""
     from namectus_engine import NamectusEngine
     engine = NamectusEngine()
     
@@ -208,7 +237,6 @@ def filter_hidden(results, history, pending_top_ups):
 # ГРУППИРОВКА ПО ПРОЕКТАМ
 # =========================
 def render_grouped_by_projects(items, section_name):
-    """Группирует кампании по проектам"""
     if not items:
         return
     
@@ -245,7 +273,7 @@ def render_campaign_card(res, label, history, is_pending):
         elif res["status"] == "warning":
             st.warning(f" {res['problem']}")
         elif res["status"] == "info":
-            st.info(f"🟡 {res['problem']}")
+            st.info(f" {res['problem']}")
 
     if is_pending:
         url = get_campaign_url(res["source"], res["campaign_id"])
@@ -296,34 +324,45 @@ def render_campaign_card(res, label, history, is_pending):
                         st.rerun()
 
 # =========================
-# ОБРАБОТКА ВХОДА ЧЕРЕЗ ЯНДЕКС
+# НАСТРОЙКА СТРАНИЦЫ
 # =========================
-def exchange_code_for_token(code):
-    token_url = "https://oauth.yandex.ru/token"
-    data = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "client_id": YANDEX_CLIENT_ID,
-        "client_secret": YANDEX_CLIENT_SECRET
-    }
-    try:
-        response = requests.post(token_url, data=data)
-        if response.status_code == 200:
-            token_data = response.json()
-            return token_data.get("access_token")
-        else:
-            st.error(f"Ошибка: {response.status_code} - {response.text}")
-    except Exception as e:
-        st.error(f"Ошибка получения токена: {e}")
-    return None
+st.set_page_config(page_title="Namectus", page_icon="📊", layout="wide")
 
-def get_yandex_auth_url():
-    return (
-        f"https://oauth.yandex.ru/authorize?"
-        f"response_type=code&"
-        f"client_id={YANDEX_CLIENT_ID}&"
-        f"redirect_uri={YANDEX_REDIRECT_URI}"
-    )
+# =========================
+# ИНИЦИАЛИЗАЦИЯ SESSION_STATE
+# =========================
+if "history" not in st.session_state:
+    st.session_state.history = load_history()
+if "pending_top_ups" not in st.session_state:
+    st.session_state.pending_top_ups = {}
+if "scan_results" not in st.session_state:
+    st.session_state.scan_results = None
+
+# 🔥 Автоматически загружаем токен, если он сохранён
+if "yandex_token" not in st.session_state:
+    saved_token = load_token("yandex")
+    if saved_token:
+        st.session_state["yandex_token"] = saved_token
+        st.rerun()
+
+# Проверяем, есть ли code в URL (после входа через Яндекс)
+query_params = st.query_params
+if "code" in query_params and "yandex_token" not in st.session_state:
+    code = query_params["code"]
+    token = exchange_code_for_token(code)
+    if token:
+        st.session_state["yandex_token"] = token
+        save_token("yandex", token)
+        st.query_params.clear()
+        st.rerun()
+
+# =========================
+# ШАПКА С ДАТОЙ И ВРЕМЕНЕМ
+# =========================
+now = datetime.now()
+current_time = now.strftime("%H:%M:%S")
+st.markdown(f"# NAMECTUS v1.0 | {now.strftime('%d.%m.%Y')} {current_time}")
+st.markdown("---")
 
 # =========================
 # СТИЛИ ДЛЯ КНОПКИ
@@ -352,8 +391,6 @@ st.markdown("""
 # =========================
 # ЛОГИКА ЭКРАНА
 # =========================
-if "scan_results" not in st.session_state:
-    st.session_state.scan_results = None
 
 # 1. Если токена нет — показываем вход
 if "yandex_token" not in st.session_state:
@@ -367,8 +404,7 @@ if "yandex_token" not in st.session_state:
 
 # 2. Если токен есть, но сканирование еще не запускали
 if st.session_state.scan_results is None:
-    st.markdown("☑ Вы подключены к Яндекс.Директ")
-    st.markdown("---")
+    st.success("☑ Вы подключены к Яндекс.Директ")
     st.markdown("Нажмите кнопку ниже, чтобы проверить состояние ваших рекламных кампаний.")
     
     st.markdown('<div class="scan-button">', unsafe_allow_html=True)
@@ -378,10 +414,10 @@ if st.session_state.scan_results is None:
                 SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
                 url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
                 
-                st.info(" Загружаем данные из таблицы...")
+                st.info("📥 Загружаем данные из таблицы...")
                 df = pd.read_csv(url)
                 
-                st.info("🧠 Анализируем кампании...")
+                st.info(" Анализируем кампании...")
                 results = analyze_campaigns(df)
                 results = filter_hidden(results, st.session_state.history, st.session_state.pending_top_ups)
                 
@@ -406,7 +442,7 @@ if st.session_state.scan_results is None:
                 st.code(str(e))
                 
                 st.warning("💡 Хотите протестировать интерфейс?")
-                if st.button("🧪 Загрузить тестовые данные"):
+                if st.button(" Загрузить тестовые данные"):
                     try:
                         test_data = {
                             'project': ['Bio-wc-service', 'Bio-wc-service', 'solodent'],
@@ -461,13 +497,13 @@ if st.session_state.scan_results is not None:
             st.rerun()
 
     elif only_accumulation:
-        st.info("⚪ Идёт накопление данных. Пока рано делать выводы.")
+        st.info(" Идёт накопление данных. Пока рано делать выводы.")
         if st.button("🔄 Сканировать заново", use_container_width=True):
             st.session_state.scan_results = None
             st.rerun()
 
     else:
-        st.warning(f"⚠ Есть проблема (найдено: {len(real_problems)})")
+        st.warning(f" Есть проблема (найдено: {len(real_problems)})")
         
         if not st.session_state.get("show_problems", False):
             if st.button("👉 Открыть подробности", key="btn_show_problems"):
@@ -500,7 +536,7 @@ if st.session_state.scan_results is not None:
                     st.markdown("#### 🟡 Требует внимания")
                     render_grouped_by_projects(warning + info, "warning")
                 if stopped:
-                    st.markdown("#### ⚫ Остановлены")
+                    st.markdown("####  Остановлены")
                     render_grouped_by_projects(stopped, "stopped")
                     
             elif st.session_state.get("group_by") == "priority":
