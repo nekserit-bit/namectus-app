@@ -503,108 +503,30 @@ ok = [r for r in results if r["status"] == "ok"]
 data_accumulation = [r for r in results if r["status"] == "data_accumulation"]
 
 # =========================
-# ОГРОМНЫЕ КАРТОЧКИ
+# НОВЫЙ ГЛАВНЫЙ ЭКРАН (3 СОСТОЯНИЯ)
 # =========================
 st.markdown("### 🔍 Состояние кампаний")
 
-st.markdown("""
-<style>
-.big-card {
-    background: white;
-    border-radius: 20px;
-    padding: 15px 10px;
-    text-align: center;
-    cursor: pointer;
-    border: 3px solid #e0e0e0;
-    transition: all 0.3s;
-    height: 220px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    box-sizing: border-box;
-    margin-bottom: 10px;
-}
-.big-card:hover {
-    transform: scale(1.02);
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-}
-.big-number {
-    font-size: 60px;
-    font-weight: bold;
-    margin: 0;
-    line-height: 1;
-}
-.big-label {
-    font-size: 18px;
-    margin-top: 15px;
-    color: #666;
-    font-weight: 500;
-}
-</style>
-""", unsafe_allow_html=True)
+# Собираем все реальные проблемы в одну кучу
+real_problems = stopped + critical + warning + info
+has_problems = len(real_problems) > 0
+only_accumulation = len(data_accumulation) > 0 and not has_problems
 
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+# Состояние 1: Всё отлично
+if not has_problems and not only_accumulation:
+    st.success("✅ Всё отлично! Проблем не обнаружено.")
 
-with col1:
-    st.markdown(f"""
-    <div class="big-card" style="border-color: #333;">
-        <div class="big-number" style="color: #333;">⚫ {len(stopped)}</div>
-        <div class="big-label">Остановлены</div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Открыть остановленные", key="btn_stopped", use_container_width=True):
-        st.session_state.show_section["stopped"] = not st.session_state.show_section.get("stopped", False)
-        
-with col2:
-    st.markdown(f"""
-    <div class="big-card" style="border-color: #dc3545;">
-        <div class="big-number" style="color: #dc3545;">🔴 {len(critical)}</div>
-        <div class="big-label">Критично</div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Открыть критичные", key="btn_critical", use_container_width=True):
-        st.session_state.show_section["critical"] = not st.session_state.show_section.get("critical", False)
+# Состояние 2: Идёт накопление данных
+elif only_accumulation:
+    st.info("⚪ Идёт накопление данных. Пока рано делать выводы.")
 
-with col3:
-    st.markdown(f"""
-    <div class="big-card" style="border-color: #fd7e14;">
-        <div class="big-number" style="color: #fd7e14;"> {len(warning)}</div>
-        <div class="big-label">Требует внимания</div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Открыть требующие внимания", key="btn_warning", use_container_width=True):
-        st.session_state.show_section["warning"] = not st.session_state.show_section.get("warning", False)
-
-with col4:
-    st.markdown(f"""
-    <div class="big-card" style="border-color: #ffc107;">
-        <div class="big-number" style="color: #ffc107;">🟡 {len(info)}</div>
-        <div class="big-label">Плановое</div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Открыть плановые", key="btn_info", use_container_width=True):
-        st.session_state.show_section["info"] = not st.session_state.show_section.get("info", False)
-
-with col5:
-    st.markdown(f"""
-    <div class="big-card" style="border-color: #28a745;">
-        <div class="big-number" style="color: #28a745;">🟢 {len(ok)}</div>
-        <div class="big-label">Всё в порядке</div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Открыть работающие", key="btn_ok", use_container_width=True):
-        st.session_state.show_section["ok"] = not st.session_state.show_section.get("ok", False)
-
-with col6:
-    st.markdown(f"""
-    <div class="big-card" style="border-color: #6c757d;">
-        <div class="big-number" style="color: #6c757d;"> {len(data_accumulation)}</div>
-        <div class="big-label">Накопление данных</div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Открыть накопление", key="btn_data_acc", use_container_width=True):
-        st.session_state.show_section["data_accumulation"] = not st.session_state.show_section.get("data_accumulation", False)
+# Состояние 3: Есть проблема
+else:
+    st.warning(f"⚠ Есть проблема (найдено: {len(real_problems)})")
+    
+    # Кнопка, которая раскроет список
+    if st.button("👉 Открыть подробности", key="btn_show_problems"):
+        st.session_state.show_problems = True
 
 st.markdown("---")
 
