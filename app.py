@@ -6,11 +6,6 @@ from datetime import datetime, timedelta
 import requests
 from dotenv import load_dotenv
 
-# Импорты...
-from dotenv import load_dotenv
-
-st.write("🚨 DEBUG 000 - Файл загружается!")  # ← ДОБАВИТЬ ЗДЕСЬ!
-
 # =========================
 # БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
 # =========================
@@ -68,8 +63,6 @@ def save_history(data):
 TOKENS_FILE = "tokens.json"
 
 def save_token(source, token):
-    """Сохраняет токен для любого источника (yandex, google, meta)"""
-    st.write(f"🔍 DEBUG save_token: Вызвана для {source}")  # ← ДОБАВИТЬ!
     tokens = load_all_tokens()
     tokens[source] = {
         "token": token,
@@ -77,15 +70,12 @@ def save_token(source, token):
     }
     with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
         json.dump(tokens, f, ensure_ascii=False, indent=2)
-    st.write(f"🔍 DEBUG save_token: Файл {TOKENS_FILE} сохранён!")  # ← ДОБАВИТЬ!
 
 def load_token(source):
-    """Загружает токен для конкретного источника"""
     tokens = load_all_tokens()
     return tokens.get(source, {}).get("token")
 
 def load_all_tokens():
-    """Загружает все токены из файла"""
     if os.path.exists(TOKENS_FILE):
         try:
             with open(TOKENS_FILE, 'r', encoding='utf-8') as f:
@@ -95,9 +85,8 @@ def load_all_tokens():
     return {}
 
 # =========================
-# ЯДРО АНАЛИЗА
+# ЯДРО АНАЛИЗА (с namectus_engine)
 # =========================
-
 def analyze_campaigns(df: pd.DataFrame):
     """Новый мозг: использует NamectusEngine, но возвращает данные в старом формате для UI"""
     from namectus_engine import NamectusEngine
@@ -112,7 +101,6 @@ def analyze_campaigns(df: pd.DataFrame):
         source = camp_df["source"].iloc[0]
         campaign_id = str(camp_df["campaign_id"].iloc[0])
         
-        # 1. Сначала проверяем, достаточно ли данных (как было)
         if total_days < periods["min_data_days"]:
             results.append({
                 "label": f"{project} / {campaign}", 
@@ -125,7 +113,6 @@ def analyze_campaigns(df: pd.DataFrame):
             })
             continue
         
-        # 2. Собираем цифры из таблицы для нашего движка
         try:
             budget_limit = camp_df["budget"].iloc[0]
         except:
@@ -154,7 +141,6 @@ def analyze_campaigns(df: pd.DataFrame):
             'broken_links_count': 0
         }
         
-        # 3. Прогоняем через наш новый движок!
         alerts = engine.check_campaign(campaign_info)
         
         base = {
@@ -164,7 +150,6 @@ def analyze_campaigns(df: pd.DataFrame):
             "project": project
         }
         
-        # 4. Если проблем нет — всё ок
         if not alerts:
             results.append({
                 **base,
@@ -173,27 +158,25 @@ def analyze_campaigns(df: pd.DataFrame):
                 "actions": []
             })
         else:
-            # Берём самую важную проблему
             main_alert = alerts[0]
             
-            # Маппим на старые статусы, чтобы UI не сломался
-            if main_alert['severity'] == 'critical':
+            if 'бюджет' in main_alert['title'].lower() and main_alert['severity'] == 'critical':
+                status = "stopped"
+                actions = ["Пополнить", "Наблюдать", "Игнорировать"]
+            elif 'бюджет' in main_alert['title'].lower() and main_alert['severity'] == 'warning':
+                status = "info"
+                actions = ["Пополнить", "Наблюдать", "Игнорировать"]
+            elif main_alert['severity'] == 'critical':
                 status = "critical"
+                actions = ["Исправить", "Наблюдать", "Игнорировать"]
             else:
                 status = "warning"
-            
-            # Если речь про бюджет — делаем особый статус
-            if 'бюджет' in main_alert['title'].lower():
-                if main_alert['severity'] == 'critical':
-                    status = "stopped"
-                actions = ["Пополнить", "Наблюдать", "Игнорировать"]
-            else:
                 actions = ["Исправить", "Наблюдать", "Игнорировать"]
             
             results.append({
                 **base,
                 "status": status,
-                "problem": main_alert['description'],  # ← ВОТ СЮДА ПРИХОДИТ НАШ ЧЕЛОВЕЧЕСКИЙ ТЕКСТ!
+                "problem": main_alert['description'],
                 "actions": actions
             })
     
@@ -222,6 +205,29 @@ def filter_hidden(results, history, pending_top_ups):
     return filtered
 
 # =========================
+# ГРУППИРОВКА ПО ПРОЕКТАМ
+# =========================
+def render_grouped_by_projects(items, section_name):
+    """Группирует кампании по проектам"""
+    if not items:
+        return
+    
+    projects = {}
+    for item in items:
+        project = item.get("project", "Без проекта")
+        if project not in projects:
+            projects[project] = []
+        projects[project].append(item)
+    
+    for project, project_items in projects.items():
+        st.markdown(f"####  {project}")
+        for res in project_items:
+            label = res["label"]
+            history = st.session_state.history.get(label, {})
+            is_pending = st.session_state.pending_top_ups.get(label, False)
+            render_campaign_card(res, label, history, is_pending)
+
+# =========================
 # КАРТОЧКА КАМПАНИИ
 # =========================
 def render_campaign_card(res, label, history, is_pending):
@@ -233,11 +239,11 @@ def render_campaign_card(res, label, history, is_pending):
 
     if res.get("problem"):
         if res["status"] == "stopped":
-            st.error(f"⚫ {res['problem']}")
+            st.error(f" {res['problem']}")
         elif res["status"] == "critical":
             st.error(f" {res['problem']}")
         elif res["status"] == "warning":
-            st.warning(f"🟠 {res['problem']}")
+            st.warning(f" {res['problem']}")
         elif res["status"] == "info":
             st.info(f"🟡 {res['problem']}")
 
@@ -293,7 +299,6 @@ def render_campaign_card(res, label, history, is_pending):
 # ОБРАБОТКА ВХОДА ЧЕРЕЗ ЯНДЕКС
 # =========================
 def exchange_code_for_token(code):
-    """Обменивает временный code на постоянный токен"""
     token_url = "https://oauth.yandex.ru/token"
     data = {
         "grant_type": "authorization_code",
@@ -312,11 +317,7 @@ def exchange_code_for_token(code):
         st.error(f"Ошибка получения токена: {e}")
     return None
 
-# =========================
-# ЯНДЕКС OAUTH ЛОГИКА
-# =========================
 def get_yandex_auth_url():
-    """Возвращает ссылку для входа через Яндекс"""
     return (
         f"https://oauth.yandex.ru/authorize?"
         f"response_type=code&"
@@ -325,156 +326,25 @@ def get_yandex_auth_url():
     )
 
 # =========================
-# ФУНКЦИЯ ДЛЯ ГРУППИРОВКИ ПО ПРОЕКТАМ
-# =========================
-def render_grouped_by_projects(items, section_name):
-    """Группирует кампании по проектам"""
-    if not items:
-        return
-    
-    projects = {}
-    for item in items:
-        project = item.get("project", "Без проекта")
-        if project not in projects:
-            projects[project] = []
-        projects[project].append(item)
-    
-    for project, project_items in projects.items():
-        st.markdown(f"####  {project}")
-        for res in project_items:
-            label = res["label"]
-            history = st.session_state.history.get(label, {})
-            is_pending = st.session_state.pending_top_ups.get(label, False)
-            render_campaign_card(res, label, history, is_pending)
-
-# =========================
-# ТЕСТ API ЯНДЕКС.ДИРЕКТ
-# =========================
-def fetch_yandex_test_data(token):
-    """Тестовая функция для получения данных из API Яндекс.Директ"""
-    url = "https://api.direct.yandex.com/json/v5/reports"
-    
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept-Language": "ru",
-        "processingMode": "auto"
-    }
-    
-    body = {
-        "params": {
-            "SelectionCriteria": {},
-            "FieldNames": ["CampaignName", "Impressions", "Clicks", "Cost", "Conversions"],
-            "DateRangeType": "LAST_7_DAYS",
-            "ReportName": "NamectusTestReport",
-            "ReportType": "CAMPAIGN_PERFORMANCE_REPORT"
-        }
-    }
-    
-    try:
-        response = requests.post(url, json=body, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "error" in data:
-                return f"Ошибка API: {data['error']}"
-            if "data" in data:
-                return data["data"]
-            return "Запрос принят, но данных нет (или отчет еще генерируется)"
-        else:
-            return f"HTTP Ошибка: {response.status_code} - {response.text}"
-    except Exception as e:
-        return f"Исключение: {e}"
-
-# =========================
-# ИНТЕРФЕЙС STREAMLIT
-# =========================
-st.set_page_config(page_title="Namectus", page_icon="📊", layout="wide")
-
-# Инициализация session_state
-if "history" not in st.session_state:
-    st.session_state.history = load_history()
-if "pending_top_ups" not in st.session_state:
-    st.session_state.pending_top_ups = {}
-if "show_section" not in st.session_state:
-    st.session_state.show_section = {}
-
-# 🔥 Автоматически загружаем токен, если он сохранён
-if "yandex_token" not in st.session_state:
-    saved_token = load_token("yandex")
-    if saved_token:
-        st.session_state["yandex_token"] = saved_token
-        st.rerun()
-
-# Проверяем, есть ли code в URL (после входа через Яндекс)
-query_params = st.query_params
-if "code" in query_params and "yandex_token" not in st.session_state:
-    st.write("🔍 DEBUG: Код получен из URL!")  # ← ДОБАВИТЬ!
-    code = query_params["code"]
-    token = exchange_code_for_token(code)
-    if token:
-        st.write("🔍 DEBUG: Токен получен от Яндекса!")  # ← ДОБАВИТЬ!
-        st.session_state["yandex_token"] = token
-        save_token("yandex", token)
-        st.write("🔍 DEBUG: Токен сохранён в файл!")  # ← ДОБАВИТЬ!
-        st.success("✅ Успешно подключено к Яндекс.Директ! Токен сохранён.")
-        st.query_params.clear()
-        st.rerun()
-    else:
-        st.error("❌ ОШИБКА: Токен не получен!")  # ← ДОБАВИТЬ!
-
-# Шапка
-st.markdown(f"#  NAMECTUS | {datetime.now().strftime('%d.%m.%Y')}")
-st.markdown("---")
-
-# Кнопка входа через Яндекс
-if "yandex_token" not in st.session_state:
-    auth_url = get_yandex_auth_url()
-    st.markdown(f"### 🔐 Подключите рекламный кабинет")
-    st.markdown(f"[Войти через Яндекс]({auth_url})")
-    st.caption("После входа Namectus сможет автоматически получать данные из Яндекс.Директ")
-    st.markdown("---")
-else:
-    st.success("✅ Вы подключены к Яндекс.Директ")
-    st.write("🔍 DEBUG 111 - Код обновился!") 
-    # Кнопку выхода убрали из шапки
-
-# ТЕСТОВЫЙ БЛОК: ПОЛУЧЕНИЕ ДАННЫХ ИЗ API
-if "yandex_token" in st.session_state:
-    st.markdown("---")
-    st.markdown("### 🧪 Тест API Яндекс.Директ")
-    
-    if st.button("🚀 Запросить данные из API"):
-        with st.spinner("Яндекс думает..."):
-            raw_data = fetch_yandex_test_data(st.session_state["yandex_token"])
-            
-        if isinstance(raw_data, str):
-            st.error(raw_data)
-        else:
-            st.success("✅ Данные получены!")
-            st.json(raw_data)
-            
-            if "Rows" in raw_data:
-                rows = raw_data["Rows"]
-                if rows:
-                    df_test = pd.DataFrame([row["Cells"] for row in rows])
-                    st.dataframe(df_test)
-# =========================
-# СТИЛИ ДЛЯ АККУРАТНОЙ КНОПКИ
+# СТИЛИ ДЛЯ КНОПКИ
 # =========================
 st.markdown("""
 <style>
     .scan-button button {
-        background-color: white !important;
-        color: #333333 !important;
-        border: 2px solid #4A90E2 !important; /* Синяя рамка */
+        background-color: #4A90E2 !important;
+        color: white !important;
+        border: none !important;
         border-radius: 8px !important;
         font-size: 16px !important;
         font-weight: normal !important;
-        width: 250px !important; /* Не огромная */
-        padding: 8px 16px !important;
+        width: 200px !important;
+        padding: 10px 20px !important;
     }
     .scan-button button:hover {
-        background-color: #F0F8FF !important; /* Легкий голубой при наведении */
+        background-color: #357ABD !important;
+    }
+    .stSpinner > div {
+        border-color: #4A90E2 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -485,7 +355,7 @@ st.markdown("""
 if "scan_results" not in st.session_state:
     st.session_state.scan_results = None
 
-# 1. Если токена нет — показываем ТОЛЬКО вход
+# 1. Если токена нет — показываем вход
 if "yandex_token" not in st.session_state:
     st.markdown("### 👋 Добро пожаловать в Namectus")
     st.markdown("Для начала работы подключите ваш рекламный кабинет.")
@@ -493,36 +363,79 @@ if "yandex_token" not in st.session_state:
     auth_url = get_yandex_auth_url()
     st.markdown(f'[🔐 Войти через Яндекс]({auth_url})')
     st.caption("После входа Namectus сможет получать данные из вашего кабинета")
-    st.stop() # Останавливаем показ всего остального
+    st.stop()
 
 # 2. Если токен есть, но сканирование еще не запускали
 if st.session_state.scan_results is None:
-    st.markdown("### 👋 Добро пожаловать в Namectus")
+    st.markdown("☑ Вы подключены к Яндекс.Директ")
+    st.markdown("---")
     st.markdown("Нажмите кнопку ниже, чтобы проверить состояние ваших рекламных кампаний.")
     
-    # Аккуратная кнопка с синей рамкой
     st.markdown('<div class="scan-button">', unsafe_allow_html=True)
     if st.button("🔍 Сканировать"):
-        with st.spinner("Анализируем данные..."):
+        with st.spinner("🔄 Анализируем данные... Это может занять до 30 секунд"):
             try:
                 SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
                 url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+                
+                st.info(" Загружаем данные из таблицы...")
                 df = pd.read_csv(url)
                 
+                st.info("🧠 Анализируем кампании...")
                 results = analyze_campaigns(df)
                 results = filter_hidden(results, st.session_state.history, st.session_state.pending_top_ups)
+                
+                if len(results) == 0:
+                    st.warning("⚠️ Данные получены, но кампании не найдены. Проверьте таблицу.")
+                    st.stop()
                 
                 st.session_state.scan_results = results
                 st.session_state.show_problems = False
                 st.session_state.group_by = None
+                
+                st.success(f"✅ Проанализировано кампаний: {len(results)}")
+                st.balloons()
                 st.rerun()
+                
             except Exception as e:
                 import traceback
-                print(f"!!! ПОЛНАЯ ОШИБКА: {traceback.format_exc()}")
-                st.error(f"Ошибка загрузки данных: {e}")
+                error_detail = traceback.format_exc()
+                print(f"!!! ПОЛНАЯ ОШИБКА: {error_detail}")
+                
+                st.error(f"❌ Ошибка при загрузке данных:")
+                st.code(str(e))
+                
+                st.warning("💡 Хотите протестировать интерфейс?")
+                if st.button("🧪 Загрузить тестовые данные"):
+                    try:
+                        test_data = {
+                            'project': ['Bio-wc-service', 'Bio-wc-service', 'solodent'],
+                            'campaign': ['Баннер на поиске Мойка кабин', 'РСЯ Товары', 'Поиск Бренд'],
+                            'source': ['yandex', 'yandex', 'yandex'],
+                            'campaign_id': [12345, 12346, 12347],
+                            'date': pd.date_range('2026-07-01', periods=3),
+                            'cost': [368.51, 12500, 5000],
+                            'conversions': [0, 0, 10],
+                            'clicks': [45, 340, 200],
+                            'impressions': [9000, 50000, 15000],
+                            'budget': [1000, 15000, 10000]
+                        }
+                        df_test = pd.DataFrame(test_data)
+                        
+                        results = analyze_campaigns(df_test)
+                        results = filter_hidden(results, st.session_state.history, st.session_state.pending_top_ups)
+                        
+                        st.session_state.scan_results = results
+                        st.session_state.show_problems = False
+                        st.session_state.group_by = None
+                        
+                        st.success("✅ Тестовые данные загружены!")
+                        st.rerun()
+                    except Exception as test_e:
+                        st.error(f"Ошибка с тестовыми данными: {test_e}")
                 st.stop()
     st.markdown('</div>', unsafe_allow_html=True)
-    st.stop() # Дальше код не пойдет, пока не нажмут кнопку
+    st.stop()
 
 # =========================
 # ЭКРАН ПОСЛЕ СКАНИРОВАНИЯ
@@ -530,7 +443,6 @@ if st.session_state.scan_results is None:
 if st.session_state.scan_results is not None:
     results = st.session_state.scan_results
     
-    # Разделяем на категории
     stopped = [r for r in results if r["status"] == "stopped"]
     critical = [r for r in results if r["status"] == "critical"]
     warning = [r for r in results if r["status"] == "warning"]
@@ -542,21 +454,18 @@ if st.session_state.scan_results is not None:
     has_problems = len(real_problems) > 0
     only_accumulation = len(data_accumulation) > 0 and not has_problems
 
-    # Состояние 1: Всё отлично
     if not has_problems and not only_accumulation:
         st.success("✅ Всё отлично! Проблем не обнаружено.")
         if st.button("🔄 Сканировать заново", use_container_width=True):
             st.session_state.scan_results = None
             st.rerun()
 
-    # Состояние 2: Идёт накопление данных
     elif only_accumulation:
         st.info("⚪ Идёт накопление данных. Пока рано делать выводы.")
         if st.button("🔄 Сканировать заново", use_container_width=True):
             st.session_state.scan_results = None
             st.rerun()
 
-    # Состояние 3: Есть проблема
     else:
         st.warning(f"⚠ Есть проблема (найдено: {len(real_problems)})")
         
@@ -582,7 +491,6 @@ if st.session_state.scan_results is not None:
             
             st.markdown("---")
             
-            # Отображение в зависимости от выбора
             if st.session_state.get("group_by") == "projects":
                 st.markdown("### 📁 Список по проектам")
                 if critical:
@@ -607,7 +515,6 @@ if st.session_state.scan_results is not None:
                     st.markdown("#### ⚫ Остановлены")
                     render_grouped_by_projects(stopped, "stopped")
             
-            # Кнопка сброса, когда всё исправили
             st.markdown("---")
             if st.button("✅ Все проблемы решены. Скрыть и начать заново", use_container_width=True):
                 st.session_state.scan_results = None
@@ -616,7 +523,7 @@ if st.session_state.scan_results is not None:
                 st.rerun()
 
 # =========================
-# ТЕХНИЧЕСКАЯ КНОПКА (в самом низу)
+# ТЕХНИЧЕСКАЯ КНОПКА
 # =========================
 st.markdown("---")
 if "yandex_token" in st.session_state:
