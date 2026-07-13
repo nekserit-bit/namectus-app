@@ -458,21 +458,53 @@ if "yandex_token" in st.session_state:
                 if rows:
                     df_test = pd.DataFrame([row["Cells"] for row in rows])
                     st.dataframe(df_test)
+# =========================
+# СТИЛИ ДЛЯ АККУРАТНОЙ КНОПКИ
+# =========================
+st.markdown("""
+<style>
+    .scan-button button {
+        background-color: white !important;
+        color: #333333 !important;
+        border: 2px solid #4A90E2 !important; /* Синяя рамка */
+        border-radius: 8px !important;
+        font-size: 16px !important;
+        font-weight: normal !important;
+        width: 250px !important; /* Не огромная */
+        padding: 8px 16px !important;
+    }
+    .scan-button button:hover {
+        background-color: #F0F8FF !important; /* Легкий голубой при наведении */
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # =========================
-# ЧИСТЫЙ ЭКРАН ДО СКАНИРОВАНИЯ
+# ЛОГИКА ЭКРАНА
 # =========================
 if "scan_results" not in st.session_state:
     st.session_state.scan_results = None
 
+# 1. Если токена нет — показываем ТОЛЬКО вход
+if "yandex_token" not in st.session_state:
+    st.markdown("### 👋 Добро пожаловать в Namectus")
+    st.markdown("Для начала работы подключите ваш рекламный кабинет.")
+    
+    auth_url = get_yandex_auth_url()
+    st.markdown(f'[🔐 Войти через Яндекс]({auth_url})')
+    st.caption("После входа Namectus сможет получать данные из вашего кабинета")
+    st.stop() # Останавливаем показ всего остального
+
+# 2. Если токен есть, но сканирование еще не запускали
 if st.session_state.scan_results is None:
     st.markdown("### 👋 Добро пожаловать в Namectus")
     st.markdown("Нажмите кнопку ниже, чтобы проверить состояние ваших рекламных кампаний.")
     
-    if st.button("🔍 Сканировать", use_container_width=True, type="primary"):
+    # Аккуратная кнопка с синей рамкой
+    st.markdown('<div class="scan-button">', unsafe_allow_html=True)
+    if st.button("🔍 Сканировать"):
         with st.spinner("Анализируем данные..."):
             try:
-                # Временно читаем из Google Таблицы для теста
                 SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
                 url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
                 df = pd.read_csv(url)
@@ -484,13 +516,13 @@ if st.session_state.scan_results is None:
                 st.session_state.show_problems = False
                 st.session_state.group_by = None
                 st.rerun()
-                
             except Exception as e:
                 import traceback
-                error_detail = traceback.format_exc()
-                print(f"!!! ПОЛНАЯ ОШИБКА: {error_detail}")
+                print(f"!!! ПОЛНАЯ ОШИБКА: {traceback.format_exc()}")
                 st.error(f"Ошибка загрузки данных: {e}")
                 st.stop()
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop() # Дальше код не пойдет, пока не нажмут кнопку
 
 # =========================
 # ЭКРАН ПОСЛЕ СКАНИРОВАНИЯ
