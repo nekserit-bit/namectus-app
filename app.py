@@ -527,41 +527,68 @@ else:
     # Кнопка, которая раскроет список
     if st.button("👉 Открыть подробности", key="btn_show_problems"):
         st.session_state.show_problems = True
+        st.session_state.group_by = None 
 
 st.markdown("---")
 
 # =========================
 # РАСКРЫВАЮЩИЕСЯ РАЗДЕЛЫ
 # =========================
-
-if stopped and st.session_state.show_section.get("stopped", False):
-    st.markdown("###  ОСТАНОВЛЕНЫ (Бюджет исчерпан)")
-    render_grouped_by_projects(stopped, "stopped")
-
-if critical and st.session_state.show_section.get("critical", False):
-    st.markdown("### 🔴 КРИТИЧЕСКИЕ (Срочно!)")
-    render_grouped_by_projects(critical, "critical")
-
-if warning and st.session_state.show_section.get("warning", False):
-    st.markdown("### 🟠 ТРЕБУЕТ ВНИМАНИЯ")
-    render_grouped_by_projects(warning, "warning")
-
-if info and st.session_state.show_section.get("info", False):
-    st.markdown("### 🟡 ПЛАНОВОЕ ЗАВЕРШЕНИЕ БЮДЖЕТА")
-    render_grouped_by_projects(info, "info")
-
-if ok and st.session_state.show_section.get("ok", False):
-    st.markdown("### 🟢 ВСЁ В ПОРЯДКЕ")
-    for res in ok:
-        label = res["label"]
-        st.markdown(f"- **{label}**: Работает стабильно")
-
-if data_accumulation and st.session_state.show_section.get("data_accumulation", False):
-    st.markdown("###  НАКОПЛЕНИЕ ДАННЫХ")
-    render_grouped_by_projects(data_accumulation, "data_accumulation")
+# =========================
+# ВТОРОЕ ОКНО: ВЫБОР ГРУППИРОВКИ
+# =========================
+if st.session_state.get("show_problems", False) and has_problems:
+    
+    # Показываем две маленькие кнопки выбора
+    st.markdown("### Как посмотреть?")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📁 По проектам", key="btn_group_projects", use_container_width=True):
+            st.session_state.group_by = "projects"
+    
+    with col2:
+        if st.button("⚠ По важности", key="btn_group_priority", use_container_width=True):
+            st.session_state.group_by = "priority"
+    
+    st.markdown("---")
+    
+    # Показываем список в зависимости от выбора
+    if st.session_state.get("group_by") == "projects":
+        st.markdown("### 📁 Список по проектам")
+        if critical:
+            st.markdown("#### 🔴 Критично")
+            render_grouped_by_projects(critical, "critical")
+        if warning or info:
+            st.markdown("#### 🟡 Требует внимания")
+            render_grouped_by_projects(warning + info, "warning")
+        if stopped:
+            st.markdown("#### ⚫ Остановлены")
+            render_grouped_by_projects(stopped, "stopped")
+            
+    elif st.session_state.get("group_by") == "priority":
+        st.markdown("### ⚠ Список по важности")
+        if critical:
+            st.markdown("#### 🔴 Критично")
+            render_grouped_by_projects(critical, "critical")
+        if warning or info:
+            st.markdown("#### 🟡 Требует внимания")
+            render_grouped_by_projects(warning + info, "warning")
+        if stopped:
+            st.markdown("#### ⚫ Остановлены")
+            render_grouped_by_projects(stopped, "stopped")
 
 st.markdown("---")
-st.caption("Namectus v0.8 | Dashboard с группировкой по проектам")
+st.caption("Namectus v0.9 | Помощник, а не дашборд")
+
+# Техническая кнопка сброса токена
+if "yandex_token" in st.session_state:
+    st.markdown("---")
+    if st.button("🔧 Сбросить подключение к Яндексу", key="reset_token"):
+        del st.session_state["yandex_token"]
+        if os.path.exists(TOKENS_FILE):
+            os.remove(TOKENS_FILE)
+        st.rerun()
 
 # Техническая кнопка сброса токена
 if "yandex_token" in st.session_state:
