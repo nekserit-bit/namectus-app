@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 import requests
 from dotenv import load_dotenv
+import hashlib
 
 # =========================
 # БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
@@ -256,7 +257,7 @@ def render_grouped_by_projects(items, section_name):
             render_campaign_card(res, label, history, is_pending)
 
 # =========================
-# КАРТОЧКА КАМПАНИИ
+# КАРТОЧКА КАМПАНИИ (ИСПРАВЛЕННАЯ)
 # =========================
 def render_campaign_card(res, label, history, is_pending):
     st.markdown("---")
@@ -266,10 +267,11 @@ def render_campaign_card(res, label, history, is_pending):
         st.caption(f"✅ {history['action']} ({history.get('date', '')})")
 
     if res.get("problem"):
+        # ИСПРАВЛЕНО: правильные цвета для разных статусов
         if res["status"] == "stopped":
-            st.error(f" {res['problem']}")
+            st.error(f"⚫ {res['problem']}")
         elif res["status"] == "critical":
-            st.error(f" {res['problem']}")
+            st.error(f"🔴 {res['problem']}")
         elif res["status"] == "warning":
             st.warning(f" {res['problem']}")
         elif res["status"] == "info":
@@ -337,6 +339,8 @@ if "pending_top_ups" not in st.session_state:
     st.session_state.pending_top_ups = {}
 if "scan_results" not in st.session_state:
     st.session_state.scan_results = None
+if "last_scan_time" not in st.session_state:
+    st.session_state.last_scan_time = None
 
 # 🔥 Автоматически загружаем токен, если он сохранён
 if "yandex_token" not in st.session_state:
@@ -365,7 +369,7 @@ st.markdown(f"# NAMECTUS v1.0 | {now.strftime('%d.%m.%Y')} {current_time}")
 st.markdown("---")
 
 # =========================
-# СТИЛИ ДЛЯ КНОПКИ
+# СТИЛИ
 # =========================
 st.markdown("""
 <style>
@@ -385,6 +389,18 @@ st.markdown("""
     .stSpinner > div {
         border-color: #4A90E2 !important;
     }
+    .platform-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 10px 0;
+        text-align: center;
+    }
+    .platform-card.coming-soon {
+        opacity: 0.6;
+        border-style: dashed;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -392,13 +408,39 @@ st.markdown("""
 # ЛОГИКА ЭКРАНА
 # =========================
 
-# 1. Если токена нет — показываем вход
+# 1. Если токена нет — показываем вход + заглушки для других платформ
 if "yandex_token" not in st.session_state:
     st.markdown("### 👋 Добро пожаловать в Namectus")
-    st.markdown("Для начала работы подключите ваш рекламный кабинет.")
+    st.markdown("Выберите рекламную платформу для подключения:")
     
-    auth_url = get_yandex_auth_url()
-    st.markdown(f'[🔐 Войти через Яндекс]({auth_url})')
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="platform-card">
+            <h3>🔴 Яндекс.Директ</h3>
+            <p>Подключено</p>
+        </div>
+        """, unsafe_allow_html=True)
+        auth_url = get_yandex_auth_url()
+        st.markdown(f'[🔐 Войти через Яндекс]({auth_url})')
+    
+    with col2:
+        st.markdown("""
+        <div class="platform-card coming-soon">
+            <h3> Google Ads</h3>
+            <p>Скоро будет доступно</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="platform-card coming-soon">
+            <h3>🔷 Meta Ads</h3>
+            <p>Скоро будет доступно</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
     st.caption("После входа Namectus сможет получать данные из вашего кабинета")
     st.stop()
 
@@ -417,7 +459,7 @@ if st.session_state.scan_results is None:
                 st.info("📥 Загружаем данные из таблицы...")
                 df = pd.read_csv(url)
                 
-                st.info(" Анализируем кампании...")
+                st.info("🧠 Анализируем кампании...")
                 results = analyze_campaigns(df)
                 results = filter_hidden(results, st.session_state.history, st.session_state.pending_top_ups)
                 
@@ -428,6 +470,7 @@ if st.session_state.scan_results is None:
                 st.session_state.scan_results = results
                 st.session_state.show_problems = False
                 st.session_state.group_by = None
+                st.session_state.last_scan_time = datetime.now()
                 
                 st.success(f"✅ Проанализировано кампаний: {len(results)}")
                 st.balloons()
@@ -442,7 +485,7 @@ if st.session_state.scan_results is None:
                 st.code(str(e))
                 
                 st.warning("💡 Хотите протестировать интерфейс?")
-                if st.button(" Загрузить тестовые данные"):
+                if st.button("🧪 Загрузить тестовые данные"):
                     try:
                         test_data = {
                             'project': ['Bio-wc-service', 'Bio-wc-service', 'solodent'],
@@ -464,6 +507,7 @@ if st.session_state.scan_results is None:
                         st.session_state.scan_results = results
                         st.session_state.show_problems = False
                         st.session_state.group_by = None
+                        st.session_state.last_scan_time = datetime.now()
                         
                         st.success("✅ Тестовые данные загружены!")
                         st.rerun()
@@ -497,16 +541,16 @@ if st.session_state.scan_results is not None:
             st.rerun()
 
     elif only_accumulation:
-        st.info(" Идёт накопление данных. Пока рано делать выводы.")
+        st.info("⚪ Идёт накопление данных. Пока рано делать выводы.")
         if st.button("🔄 Сканировать заново", use_container_width=True):
             st.session_state.scan_results = None
             st.rerun()
 
     else:
-        st.warning(f" Есть проблема (найдено: {len(real_problems)})")
+        st.warning(f"⚠ Есть проблема (найдено: {len(real_problems)})")
         
         if not st.session_state.get("show_problems", False):
-            if st.button("👉 Открыть подробности", key="btn_show_problems"):
+            if st.button(" Открыть подробности", key="btn_show_problems"):
                 st.session_state.show_problems = True
                 st.session_state.group_by = None
                 st.rerun()
@@ -536,13 +580,13 @@ if st.session_state.scan_results is not None:
                     st.markdown("#### 🟡 Требует внимания")
                     render_grouped_by_projects(warning + info, "warning")
                 if stopped:
-                    st.markdown("####  Остановлены")
+                    st.markdown("#### ⚫ Остановлены")
                     render_grouped_by_projects(stopped, "stopped")
                     
             elif st.session_state.get("group_by") == "priority":
                 st.markdown("### ⚠ Список по важности")
                 if critical:
-                    st.markdown("#### 🔴 Критично")
+                    st.markdown("####  Критично")
                     render_grouped_by_projects(critical, "critical")
                 if warning or info:
                     st.markdown("#### 🟡 Требует внимания")
@@ -550,22 +594,27 @@ if st.session_state.scan_results is not None:
                 if stopped:
                     st.markdown("#### ⚫ Остановлены")
                     render_grouped_by_projects(stopped, "stopped")
-            
-            st.markdown("---")
-            if st.button("✅ Все проблемы решены. Скрыть и начать заново", use_container_width=True):
-                st.session_state.scan_results = None
-                st.session_state.show_problems = False
-                st.session_state.group_by = None
-                st.rerun()
 
 # =========================
-# ТЕХНИЧЕСКАЯ КНОПКА
+# БОКОВАЯ ПАНЕЛЬ С НАСТРОЙКАМИ
 # =========================
-st.markdown("---")
-if "yandex_token" in st.session_state:
-    if st.button("🔧 Сбросить подключение к Яндексу", key="reset_token"):
-        del st.session_state["yandex_token"]
-        if os.path.exists(TOKENS_FILE):
-            os.remove(TOKENS_FILE)
+with st.sidebar:
+    st.markdown("### ⚙️ Настройки")
+    
+    if st.session_state.get("last_scan_time"):
+        st.caption(f"Последнее сканирование: {st.session_state.last_scan_time.strftime('%H:%M:%S')}")
+    
+    st.markdown("---")
+    
+    if st.button("🔄 Пересканировать"):
         st.session_state.scan_results = None
         st.rerun()
+    
+    if "yandex_token" in st.session_state:
+        st.markdown("---")
+        if st.button("🔧 Сбросить подключение"):
+            del st.session_state["yandex_token"]
+            if os.path.exists(TOKENS_FILE):
+                os.remove(TOKENS_FILE)
+            st.session_state.scan_results = None
+            st.rerun()
