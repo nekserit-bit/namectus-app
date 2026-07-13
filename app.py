@@ -97,122 +97,106 @@ def load_all_tokens():
 # =========================
 # ЯДРО АНАЛИЗА
 # =========================
+
 def analyze_campaigns(df: pd.DataFrame):
+    """Новый мозг: использует NamectusEngine, но возвращает данные в старом формате для UI"""
+    from namectus_engine import NamectusEngine
+    engine = NamectusEngine()
+    
     results = []
     periods = CONFIG["periods"]
-    thresholds = CONFIG["thresholds"]
-
+    
     for (project, campaign), camp_df in df.groupby(["project", "campaign"]):
         camp_df = camp_df.sort_values("date").reset_index(drop=True)
         total_days = len(camp_df)
         source = camp_df["source"].iloc[0]
         campaign_id = str(camp_df["campaign_id"].iloc[0])
-
+        
+        # 1. Сначала проверяем, достаточно ли данных (как было)
         if total_days < periods["min_data_days"]:
             results.append({
-                "label": f"{project} / {campaign}",
+                "label": f"{project} / {campaign}", 
                 "status": "data_accumulation",
-                "problem": f"Доступно только {total_days} дней данных (нужно минимум {periods['min_data_days']})",
+                "problem": f"Доступно только {total_days} дней данных",
                 "actions": ["Наблюдать", "Закрыть"],
                 "source": source, 
                 "campaign_id": campaign_id,
                 "project": project
             })
             continue
-
+        
+        # 2. Собираем цифры из таблицы для нашего движка
         try:
             budget_limit = camp_df["budget"].iloc[0]
         except:
             budget_limit = camp_df["cost"].sum() * 1.5
-
+        
         total_spent = camp_df["cost"].sum()
         remaining = budget_limit - total_spent
         avg_daily = total_spent / max(total_days, 1)
-        days_left = remaining / max(avg_daily, 1) if avg_daily > 0 else 999
-
+        total_conv = int(camp_df["conversions"].sum())
+        total_clicks = int(camp_df["clicks"].sum())
+        total_impressions = int(camp_df["impressions"].sum())
+        
+        campaign_info = {
+            'days': total_days,
+            'spend': total_spent,
+            'currency': '₽',
+            'conversions': total_conv,
+            'clicks': total_clicks,
+            'status': 'active',
+            'budget_remaining': remaining,
+            'daily_spend': avg_daily,
+            'previous_cpa': 0,
+            'current_cpa': total_spent / max(total_conv, 1),
+            'previous_ctr': 0.01,
+            'current_ctr': total_clicks / max(total_impressions, 1),
+            'broken_links_count': 0
+        }
+        
+        # 3. Прогоняем через наш новый движок!
+        alerts = engine.check_campaign(campaign_info)
+        
         base = {
             "label": f"{project} / {campaign}", 
             "source": source, 
             "campaign_id": campaign_id,
             "project": project
         }
-
-        if remaining <= 0 or days_left <= 0:
+        
+        # 4. Если проблем нет — всё ок
+        if not alerts:
             results.append({
-                **base, 
-                "status": "stopped",
-                "problem": "Бюджет исчерпан. Объявления не показываются.",
-                "actions": ["Пополнить", "Закрыть"]
-            })
-        elif days_left <= 1:
-            results.append({
-                **base, 
-                "status": "critical",
-                "problem": f"Бюджет закончится завтра (~{int(days_left)} дн.)",
-                "actions": ["Пополнить", "Наблюдать", "Игнорировать"]
-            })
-        elif days_left <= 3:
-            results.append({
-                **base, 
-                "status": "warning",
-                "problem": f"Бюджет закончится через ~{int(days_left)} дня",
-                "actions": ["Пополнить", "Наблюдать", "Игнорировать"]
-            })
-        elif days_left <= 5:
-            results.append({
-                **base, 
-                "status": "info",
-                "problem": f"Бюджет закончится через ~{int(days_left)} дней",
-                "actions": ["Пополнить", "Наблюдать", "Игнорировать"]
+                **base,
+                "status": "ok",
+                "problem": "",
+                "actions": []
             })
         else:
-            recent_df = camp_df.tail(periods["recent_days"])
-            history_df = camp_df.iloc[:-periods["recent_days"]]
-            if len(history_df) < 3:
-                history_df = recent_df
-
-            r_cost, r_conv = recent_df["cost"].sum(), recent_df["conversions"].sum()
-            r_clicks, r_impr = recent_df["clicks"].sum(), recent_df["impressions"].sum()
-            h_cost, h_conv = history_df["cost"].mean(), history_df["conversions"].mean()
-
-            r_cpa = r_cost / max(r_conv, 1)
-            h_cpa = h_cost / max(h_conv, 1) if h_conv > 0 else 0
-            r_ctr = r_clicks / max(r_impr, 1)
-
-            signals = []
+            # Берём самую важную проблему
+            main_alert = alerts[0]
             
-            if r_cost > 0 and r_conv == 0:
-                signals.append("critical")
-            elif h_conv > 0 and r_cpa > h_cpa * 1.8:
-                signals.append("critical")
-            elif h_conv > 0 and r_conv < h_conv * (1 - thresholds["conversion_drop_pct"]):
-                signals.append("warning")
-            elif r_ctr < thresholds["ctr_min"]:
-                signals.append("warning")
-            elif r_ctr > thresholds["ctr_max"]:
-                signals.append("warning")
-
-            if "critical" in signals:
-                results.append({
-                    **base, 
-                    "status": "critical",
-                    "problem": "Резкий рост CPA или нет конверсий", 
-                    "actions": ["Исправить", "Наблюдать", "Игнорировать"]
-                })
-            elif "warning" in signals:
-                results.append({
-                    **base, 
-                    "status": "warning",
-                    "problem": "Низкий CTR или падение конверсий", 
-                    "actions": ["Исправить", "Наблюдать", "Игнорировать"]
-                })
+            # Маппим на старые статусы, чтобы UI не сломался
+            if main_alert['severity'] == 'critical':
+                status = "critical"
             else:
-                results.append({
-                    **base, 
-                    "status": "ok",
-                    "problem": "", 
-                    "actions": []
-                })
+                status = "warning"
+            
+            # Если речь про бюджет — делаем особый статус
+            if 'бюджет' in main_alert['title'].lower():
+                if main_alert['severity'] == 'critical':
+                    status = "stopped"
+                actions = ["Пополнить", "Наблюдать", "Игнорировать"]
+            else:
+                actions = ["Исправить", "Наблюдать", "Игнорировать"]
+            
+            results.append({
+                **base,
+                "status": status,
+                "problem": main_alert['description'],  # ← ВОТ СЮДА ПРИХОДИТ НАШ ЧЕЛОВЕЧЕСКИЙ ТЕКСТ!
+                "actions": actions
+            })
+    
     return results
 
 # =========================
