@@ -320,7 +320,7 @@ def get_days_left():
     return max(0, (end_date - datetime.now()).days)
 
 # =========================
-# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + НОВАЯ РЕГИСТРАЦИЯ)
+# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + НОВАЯ РЕГИСТРАЦИЯ + ПРОВЕРКА ПАРОЛЯ)
 # =========================
 if not st.session_state.auth_passed:
 
@@ -334,6 +334,9 @@ if not st.session_state.auth_passed:
             margin-top: -3rem; 
         }
         header[data-testid="stHeader"] { display: none; }
+        .password-hint { font-size: 12px; margin-top: 5px; }
+        .check { color: #28a745; }
+        .cross { color: #dc3545; }
         </style>
         """,
         unsafe_allow_html=True
@@ -387,9 +390,41 @@ if not st.session_state.auth_passed:
                     st.warning(t("fill_all_fields"))
 
         with tab_reg:
-            # НОВАЯ ЛОГИКА РЕГИСТРАЦИИ
+            # НОВАЯ ЛОГИКА РЕГИСТРАЦИИ С ПРОВЕРКОЙ ПАРОЛЯ
             reg_email = st.text_input(t("email_phone"), key="reg_email_new")
             reg_pass = st.text_input(t("password"), type="password", key="reg_pass_new")
+            
+            # Проверка надёжности пароля
+            if reg_pass:
+                checks = {
+                    "length": len(reg_pass) >= 8,
+                    "upper": any(c.isupper() for c in reg_pass),
+                    "lower": any(c.islower() for c in reg_pass),
+                    "digit": any(c.isdigit() for c in reg_pass),
+                    "special": any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in reg_pass)
+                }
+                
+                st.markdown("""
+                    <div class="password-hint">
+                    <span class='check'>✓</span> Минимум 8 символов<br>
+                    <span class='check'>✓</span> Заглавная буква<br>
+                    <span class='check'>✓</span> Строчная буква<br>
+                    <span class='check'>✓</span> Цифра<br>
+                    <span class='check'>✓</span> Спецсимвол (!@#$%^&*)
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Подсветка выполненных требований
+                hint_html = "<div class='password-hint'>"
+                hint_html += "✓ Минимум 8 символов<br>" if checks["length"] else "✗ Минимум 8 символов<br>"
+                hint_html += "✓ Заглавная буква<br>" if checks["upper"] else " Заглавная буква<br>"
+                hint_html += "✓ Строчная буква<br>" if checks["lower"] else "✗ Строчная буква<br>"
+                hint_html += "✓ Цифра<br>" if checks["digit"] else " Цифра<br>"
+                hint_html += "✓ Спецсимвол (!@#$%^&*)<br>" if checks["special"] else " Спецсимвол (!@#$%^&*)<br>"
+                hint_html += "</div>"
+                
+                st.markdown(hint_html.replace("✓", "<span class='check'>✓</span>").replace("✗", "<span class='cross'>✗</span>"), unsafe_allow_html=True)
+            
             reg_pass_confirm = st.text_input("Подтвердите пароль", type="password", key="reg_pass_confirm_new")
             
             # Кнопка получения кода
@@ -397,6 +432,8 @@ if not st.session_state.auth_passed:
                 if reg_email and reg_pass and reg_pass_confirm:
                     if reg_pass != reg_pass_confirm:
                         st.error("Пароли не совпадают!")
+                    elif not all([len(reg_pass) >= 8, any(c.isupper() for c in reg_pass), any(c.isdigit() for c in reg_pass)]):
+                        st.error("Пароль недостаточно надёжный!")
                     else:
                         st.success(t("code_sent").format(email=reg_email))
                 else:
@@ -407,12 +444,14 @@ if not st.session_state.auth_passed:
             
             if st.button(t("register_btn"), type="primary", use_container_width=True, key="btn_reg_new"):
                 if reg_code == "1234" and reg_email and reg_pass and reg_pass_confirm:
-                    if reg_pass == reg_pass_confirm:
+                    if reg_pass != reg_pass_confirm:
+                        st.error("Пароли не совпадают!")
+                    elif not all([len(reg_pass) >= 8, any(c.isupper() for c in reg_pass), any(c.isdigit() for c in reg_pass)]):
+                        st.error("Пароль недостаточно надёжный! Используйте минимум 8 символов, заглавную букву и цифру.")
+                    else:
                         st.session_state.user_email = reg_email
                         st.session_state.auth_passed = True
                         st.rerun()
-                    else:
-                        st.error("Пароли не совпадают!")
                 else:
                     st.warning(t("check_code"))
 
