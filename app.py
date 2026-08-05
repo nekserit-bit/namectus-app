@@ -335,13 +335,12 @@ if not st.session_state.auth_passed:
     )
 
     # Шапка: Логотип и Название (первая строка)
-    st_col1, st_col2 = st.columns([1, 5])
-    
-    with st_col1:
-        st.image("logo.png", width=80)
-    
-    with st_col2:
-        st.markdown("<h2 style='margin-top: 15px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style="display: flex; align-items: center; margin-bottom: 20px;">
+            <img src="logo.png" style="width: 60px; height: auto; margin-right: 20px;">
+            <h2 style="margin: 0;">NAMECTUS v1.0</h2>
+        </div>
+    """, unsafe_allow_html=True)
 
     # Переключатель языка (вторая строка, справа)
     col_empty, col_lang = st.columns([3, 1])
