@@ -334,21 +334,27 @@ if not st.session_state.auth_passed:
         unsafe_allow_html=True
     )
 
-    # Шапка: Логотип, Название и Язык
-    col_logo, col_title, col_lang = st.columns([1, 6, 2])
-
+    # Шапка: Логотип и Название (первая строка)
+    col_logo, col_title = st.columns([1, 4])
+    
     with col_logo:
-        st.image("logo.png", width=50, use_container_width=False)
-
+        st.markdown('<img src="logo.png" style="width: 60px; height: auto;">', unsafe_allow_html=True)
+    
     with col_title:
         st.markdown("<h2 style='margin-top: 15px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
 
+    # Переключатель языка (вторая строка, справа)
+    col_empty, col_lang = st.columns([3, 1])
+    
     with col_lang:
-        lang = st.selectbox(
+        st.markdown("**Язык:**")
+        lang = st.radio(
             "",
-            ["🇷 Русский", " Қазақша", " English"],
+            ["🇷 Русский", "🇰 Қазақша", "🇬 English"],
+            horizontal=True,
             label_visibility="collapsed"
         )
+        
         if "Русский" in lang:
             st.session_state.user_language = "ru"
         elif "Қазақша" in lang:
