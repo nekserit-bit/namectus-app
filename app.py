@@ -320,11 +320,11 @@ def get_days_left():
     return max(0, (end_date - datetime.now()).days)
 
 # =========================
-# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (ИСПРАВЛЕННЫЙ UI)
+# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (ЛОГО + ЯЗЫК + ФОРМА)
 # =========================
 if not st.session_state.auth_passed:
     
-    # Минимальные, безопасные стили только для отступов
+    # Минимальные стили для отступов
     st.markdown(
         """
         <style>
@@ -334,34 +334,40 @@ if not st.session_state.auth_passed:
         unsafe_allow_html=True
     )
     
-    # Шапка: Логотип и Название
+    # Шапка: Логотип, Название и Язык
     col_logo, col_title, col_lang = st.columns([0.2, 2, 1])
     
     with col_logo:
-        st.image("logo_new.png", width=60)
+        # HTML гарантирует сохранение пропорций (height: auto)
+        st.markdown('<img src="logo_new.png" style="width: 60px; height: auto;">', unsafe_allow_html=True)
     
     with col_title:
         st.markdown("<h2 style='margin-top: 10px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
     
     with col_lang:
-        if "language_set" not in st.session_state or not st.session_state.language_set:
-            lang_choice = st.selectbox(
-                "Выбор языка",
-                ["🇷🇺 Русский", "🇰🇿 Қазақша", "🇬🇧 English"],
-                label_visibility="collapsed"
-            )
-            if "Русский" in lang_choice: st.session_state.user_language = "ru"
-            elif "Қазақша" in lang_choice: st.session_state.user_language = "kz"
-            else: st.session_state.user_language = "en"
-            st.session_state.language_set = True
+        # Словарь для сопоставления текста и кода языка
+        lang_options = {"🇷🇺 Русский": "ru", "🇰🇿 Қазақша": "kz", "🇬🇧 English": "en"}
+        
+        # Определяем текущий выбранный вариант для отображения в списке
+        current_lang_code = st.session_state.get("user_language", "ru")
+        current_key = [k for k, v in lang_options.items() if v == current_lang_code][0]
+        
+        # Переключатель виден всегда, но по умолчанию стоит текущий язык
+        selected_key = st.selectbox(
+            "Выбор языка",
+            options=list(lang_options.keys()),
+            index=list(lang_options.keys()).index(current_key),
+            label_visibility="collapsed"
+        )
+        
+        # Если пользователь выбрал другой язык, обновляем состояние и перезагружаем страницу
+        if lang_options[selected_key] != current_lang_code:
+            st.session_state.user_language = lang_options[selected_key]
             st.rerun()
-        else:
-            lang_code = st.session_state.user_language.upper()
-            st.markdown(f"<p style='font-size: 14px; text-align: right;'>{lang_code}</p>", unsafe_allow_html=True)
 
     st.divider()
 
-    # ЦЕНТРИРОВАНИЕ ФОРМЫ через колонки Streamlit (вместо ломающего CSS)
+    # ЦЕНТРИРОВАНИЕ ФОРМЫ
     col_empty1, col_form, col_empty2 = st.columns([1, 2, 1])
     
     with col_form:
@@ -397,9 +403,6 @@ if not st.session_state.auth_passed:
                     st.warning(t("check_code"))
     
     st.stop()
-
-# =========================
-# ЭКРАН 2: ОНБОРДИНГ (ВЫБОР ТАРИФА)
 
 # =========================
 # ЭКРАН 2: ОНБОРДИНГ (ВЫБОР ТАРИФА)
