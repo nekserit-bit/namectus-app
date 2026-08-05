@@ -389,7 +389,7 @@ if not st.session_state.auth_passed:
                 else:
                     st.warning(t("fill_all_fields"))
 
-               with tab_reg:
+        with tab_reg:
             # Поля ввода
             reg_email = st.text_input(t("email_phone"), key="reg_email_new")
             reg_pass = st.text_input(t("password"), type="password", key="reg_pass_new")
@@ -414,7 +414,7 @@ if not st.session_state.auth_passed:
             hint_html += "<span class='check'>✓</span> Минимум 8 символов<br>" if checks["length"] else "<span class='cross'>✗</span> Минимум 8 символов<br>"
             hint_html += "<span class='check'>✓</span> Латинская заглавная (A-Z)<br>" if checks["upper"] else "<span class='cross'>✗</span> Латинская заглавная (A-Z)<br>"
             hint_html += "<span class='check'>✓</span> Латинская строчная (a-z)<br>" if checks["lower"] else "<span class='cross'>✗</span> Латинская строчная (a-z)<br>"
-            hint_html += "<span class='check'>✓</span> Цифра<br>" if checks["digit"] else "<span class='cross'>✗</span> Цифра<br>"
+            hint_html += "<span class='check'>✓</span> Цифра<br>" if checks["digit"] else "<span class='cross'></span> Цифра<br>"
             hint_html += "<span class='check'>✓</span> Спецсимвол (!@#$%^&*)<br>" if checks["special"] else "<span class='cross'>✗</span> Спецсимвол (!@#$%^&*)<br>"
             hint_html += "</div>"
             
