@@ -334,22 +334,32 @@ if not st.session_state.auth_passed:
         unsafe_allow_html=True
     )
 
-    # Шапка: Логотип и Название (первая строка)
+    # Логотип (отдельно, без колонок)
+    st.image("logo.png", width=80)
+    
+    # Название (рядом через negative margin)
     st.markdown("""
-        <div style="display: flex; align-items: center; margin-bottom: 20px;">
-            <img src="logo.png" style="width: 60px; height: auto; margin-right: 20px;">
-            <h2 style="margin: 0;">NAMECTUS v1.0</h2>
-        </div>
+        <style>
+        .logo-title {
+            margin-top: -70px;
+            margin-left: 100px;
+            font-size: 32px;
+            font-weight: bold;
+        }
+        </style>
+        <div class="logo-title">NAMECTUS v1.0</div>
     """, unsafe_allow_html=True)
+    
+    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
 
-    # Переключатель языка (вторая строка, справа)
+    # Переключатель языка (справа)
     col_empty, col_lang = st.columns([3, 1])
     
     with col_lang:
         st.markdown("**Язык:**")
         lang = st.radio(
             "",
-            ["🇷 Русский", "🇰 Қазақша", " English"],
+            [" Русский", "🇰 Қазақша", "🇬 English"],
             horizontal=True,
             label_visibility="collapsed"
         )
