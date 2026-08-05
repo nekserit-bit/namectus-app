@@ -338,8 +338,7 @@ if not st.session_state.auth_passed:
     st_col1, st_col2 = st.columns([1, 5])
     
     with st_col1:
-        try:
-            st.image("logo.png", width=80)
+        st.image("logo.png", width=80)
     
     with st_col2:
         st.markdown("<h2 style='margin-top: 15px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
@@ -351,7 +350,7 @@ if not st.session_state.auth_passed:
         st.markdown("**Язык:**")
         lang = st.radio(
             "",
-            ["🇷 Русский", "🇰 Қазақша", "🇬 English"],
+            ["🇷 Русский", "🇰 Қазақша", " English"],
             horizontal=True,
             label_visibility="collapsed"
         )
