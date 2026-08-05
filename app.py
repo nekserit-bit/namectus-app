@@ -323,7 +323,7 @@ def get_days_left():
 # ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (ЛОГО + ЯЗЫК + ФОРМА)
 # =========================
 if not st.session_state.auth_passed:
-    
+
     # Минимальные стили для отступов
     st.markdown(
         """
@@ -333,50 +333,42 @@ if not st.session_state.auth_passed:
         """,
         unsafe_allow_html=True
     )
-    
+
     # Шапка: Логотип, Название и Язык
-    col_logo, col_title, col_lang = st.columns([0.2, 2, 1])
-    
+    col_logo, col_title, col_lang = st.columns([0.15, 2.5, 1])
+
     with col_logo:
-        # HTML гарантирует сохранение пропорций (height: auto)
-        st.markdown('<img src="logo_new.png" style="width: 60px; height: auto;">', unsafe_allow_html=True)
-    
+        st.image("logo_new.png", width=60, clamp=True, output_format="PNG")
+
     with col_title:
-        st.markdown("<h2 style='margin-top: 10px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
-    
+        st.markdown("<h2 style='margin-top: 15px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
+
     with col_lang:
-        # Словарь для сопоставления текста и кода языка
-        lang_options = {"🇷🇺 Русский": "ru", "🇰🇿 Қазақша": "kz", "🇬🇧 English": "en"}
-        
-        # Определяем текущий выбранный вариант для отображения в списке
-        current_lang_code = st.session_state.get("user_language", "ru")
-        current_key = [k for k, v in lang_options.items() if v == current_lang_code][0]
-        
-        # Переключатель виден всегда, но по умолчанию стоит текущий язык
-        selected_key = st.selectbox(
-            "Выбор языка",
-            options=list(lang_options.keys()),
-            index=list(lang_options.keys()).index(current_key),
+        lang = st.selectbox(
+            "",
+            ["🇷 Русский", "🇰 Қазақша", " English"],
             label_visibility="collapsed"
         )
-        
-        # Если пользователь выбрал другой язык, обновляем состояние и перезагружаем страницу
-        if lang_options[selected_key] != current_lang_code:
-            st.session_state.user_language = lang_options[selected_key]
-            st.rerun()
+
+        if "Русский" in lang:
+            st.session_state.user_language = "ru"
+        elif "Қазақша" in lang:
+            st.session_state.user_language = "kz"
+        else:
+            st.session_state.user_language = "en"
 
     st.divider()
 
     # ЦЕНТРИРОВАНИЕ ФОРМЫ
     col_empty1, col_form, col_empty2 = st.columns([1, 2, 1])
-    
+
     with col_form:
         tab_login, tab_reg = st.tabs([t("login"), t("register")])
-        
+
         with tab_login:
             email = st.text_input(t("email_phone"), key="login_email_tz1")
             password = st.text_input(t("password"), type="password", key="login_pass_tz1")
-            
+
             if st.button(t("login_btn"), type="primary", use_container_width=True):
                 if email and password:
                     st.session_state.user_email = email
@@ -388,12 +380,12 @@ if not st.session_state.auth_passed:
         with tab_reg:
             reg_email = st.text_input(t("email_phone"), key="reg_email_tz1")
             if st.button(t("get_code"), use_container_width=True):
-                if reg_email: 
+                if reg_email:
                     st.success(t("code_sent").format(email=reg_email))
-            
+
             reg_code = st.text_input(t("code_from_message"), key="reg_code_tz1")
             reg_pass = st.text_input(t("create_password"), type="password", key="reg_pass_tz1")
-            
+
             if st.button(t("register_btn"), type="primary", use_container_width=True):
                 if reg_code == "1234" and reg_email and reg_pass:
                     st.session_state.user_email = reg_email
@@ -401,7 +393,7 @@ if not st.session_state.auth_passed:
                     st.rerun()
                 else:
                     st.warning(t("check_code"))
-    
+
     st.stop()
 
 # =========================
