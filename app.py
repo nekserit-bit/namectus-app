@@ -389,36 +389,36 @@ if not st.session_state.auth_passed:
                 else:
                     st.warning(t("fill_all_fields"))
 
-        with tab_reg:
+               with tab_reg:
             # Поля ввода
             reg_email = st.text_input(t("email_phone"), key="reg_email_new")
             reg_pass = st.text_input(t("password"), type="password", key="reg_pass_new")
             reg_pass_confirm = st.text_input("Подтвердите пароль", type="password", key="reg_pass_confirm_new")
             
-            # 1. Динамическая проверка пароля (рисуем только один раз!)
-            is_strong = False
-            if reg_pass:
-                checks = {
-                    "length": len(reg_pass) >= 8,
-                    "upper": any(c.isupper() for c in reg_pass),
-                    "lower": any(c.islower() for c in reg_pass),
-                    "digit": any(c.isdigit() for c in reg_pass),
-                    "special": any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in reg_pass)
-                }
-                
-                # Считаем пароль надежным, если выполнены 3 главных условия
-                is_strong = checks["length"] and checks["upper"] and checks["digit"]
-                
-                # Формируем HTML для подсказок
-                hint_html = "<div class='password-hint'>"
-                hint_html += "<span class='check'>✓</span> Минимум 8 символов<br>" if checks["length"] else "<span class='cross'>✗</span> Минимум 8 символов<br>"
-                hint_html += "<span class='check'>✓</span> Заглавная буква<br>" if checks["upper"] else "<span class='cross'>✗</span> Заглавная буква<br>"
-                hint_html += "<span class='check'>✓</span> Строчная буква<br>" if checks["lower"] else "<span class='cross'>✗</span> Строчная буква<br>"
-                hint_html += "<span class='check'>✓</span> Цифра<br>" if checks["digit"] else "<span class='cross'>✗</span> Цифра<br>"
-                hint_html += "<span class='check'>✓</span> Спецсимвол (!@#$%^&*)<br>" if checks["special"] else "<span class='cross'>✗</span> Спецсимвол (!@#$%^&*)<br>"
-                hint_html += "</div>"
-                
-                st.markdown(hint_html, unsafe_allow_html=True)
+            # 1. Динамическая проверка пароля (показываем правила ВСЕГДА, даже если поле пустое)
+            has_latin = any('a' <= c <= 'z' or 'A' <= c <= 'Z' for c in reg_pass)
+            
+            checks = {
+                "length": len(reg_pass) >= 8,
+                "upper": any('A' <= c <= 'Z' for c in reg_pass),
+                "lower": any('a' <= c <= 'z' for c in reg_pass),
+                "digit": any(c.isdigit() for c in reg_pass),
+                "special": any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in reg_pass)
+            }
+            
+            # Считаем пароль надежным
+            is_strong = checks["length"] and checks["upper"] and checks["digit"] and has_latin
+            
+            # Рисуем подсказки (сразу все красные, зеленеют по мере ввода)
+            hint_html = "<div class='password-hint'>"
+            hint_html += "<span class='check'>✓</span> Минимум 8 символов<br>" if checks["length"] else "<span class='cross'>✗</span> Минимум 8 символов<br>"
+            hint_html += "<span class='check'>✓</span> Латинская заглавная (A-Z)<br>" if checks["upper"] else "<span class='cross'>✗</span> Латинская заглавная (A-Z)<br>"
+            hint_html += "<span class='check'>✓</span> Латинская строчная (a-z)<br>" if checks["lower"] else "<span class='cross'>✗</span> Латинская строчная (a-z)<br>"
+            hint_html += "<span class='check'>✓</span> Цифра<br>" if checks["digit"] else "<span class='cross'>✗</span> Цифра<br>"
+            hint_html += "<span class='check'>✓</span> Спецсимвол (!@#$%^&*)<br>" if checks["special"] else "<span class='cross'>✗</span> Спецсимвол (!@#$%^&*)<br>"
+            hint_html += "</div>"
+            
+            st.markdown(hint_html, unsafe_allow_html=True)
 
             # 2. Кнопка "Получить код"
             if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
@@ -427,7 +427,7 @@ if not st.session_state.auth_passed:
                 elif reg_pass != reg_pass_confirm:
                     st.error("Пароли не совпадают! Проверьте поле 'Подтвердите пароль'.")
                 elif not is_strong:
-                    st.error("Пароль слишком слабый! Выполните требования выше (минимум 8 символов, заглавная буква и цифра).")
+                    st.error("Пароль слишком слабый! Выполните все требования выше.")
                 else:
                     st.success(t("code_sent").format(email=reg_email))
 
@@ -445,11 +445,9 @@ if not st.session_state.auth_passed:
                 elif not is_strong:
                     st.error("Пароль слишком слабый!")
                 else:
-                    # Всё отлично, пускаем пользователя
                     st.session_state.user_email = reg_email
                     st.session_state.auth_passed = True
-                    st.rerun()        
-
+                    st.rerun()    
 
     st.stop()
 # =========================
