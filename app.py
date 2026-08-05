@@ -320,143 +320,86 @@ def get_days_left():
     return max(0, (end_date - datetime.now()).days)
 
 # =========================
-# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (ТЗ №1)
+# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (ИСПРАВЛЕННЫЙ UI)
 # =========================
 if not st.session_state.auth_passed:
     
-    # ======== CSS СТИЛИ ========
+    # Минимальные, безопасные стили только для отступов
     st.markdown(
         """
         <style>
-        /* Шапка 90px */
-        .header-row {
-            height: 90px;
-            display: flex;
-            align-items: center;
-            margin-bottom: 0;
-        }
-        
-        /* Логотип 60px, выровнен по верху */
-        .header-logo {
-            width: 60px;
-            height: auto;
-        }
-        
-        /* Название 36px, жирный */
-        .header-title {
-            font-size: 36px;
-            font-weight: bold;
-            margin: 0;
-            margin-left: 20px;
-        }
-        
-        /* Язык 14px */
-        .header-lang {
-            font-size: 14px;
-            margin-left: auto;
-        }
-        
-        /* Форма 420px, отступ слева */
-        .login-form {
-            max-width: 420px;
-            margin-top: 20px;
-            margin-left: 40px;
-        }
-        
-        /* Поля 40px */
-        .login-form input {
-            height: 40px !important;
-        }
-        
-        /* Кнопки 40px */
-        .login-form button {
-            height: 40px !important;
-        }
-        
-        /* Уменьшить отступы Streamlit */
-        .block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
-        }
+        .block-container { padding-top: 1rem; }
         </style>
         """,
         unsafe_allow_html=True
     )
     
-    # ======== ШАПКА 90px ========
-    col_logo, col_title, col_lang = st.columns([0.3, 2, 1])
+    # Шапка: Логотип и Название
+    col_logo, col_title, col_lang = st.columns([0.2, 2, 1])
     
     with col_logo:
-        try:
-            st.image("logo_new.png", width=60)
-        except:
-            st.markdown("️")
+        st.image("logo_new.png", width=60)
     
     with col_title:
-        st.markdown("<h1 class='header-title'>NAMECTUS v1.0</h1>", unsafe_allow_html=True)
+        st.markdown("<h2 style='margin-top: 10px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
     
     with col_lang:
-        # Язык ТОЛЬКО при первом запуске
         if "language_set" not in st.session_state or not st.session_state.language_set:
             lang_choice = st.selectbox(
-                "Выбор языка",  # <-- Непустая подпись
+                "Выбор языка",
                 ["🇷🇺 Русский", "🇰🇿 Қазақша", "🇬🇧 English"],
-                label_visibility="collapsed" # <-- Она будет скрыта
+                label_visibility="collapsed"
             )
-            if "Русский" in lang_choice: 
-                st.session_state.user_language = "ru"
-            elif "Қазақша" in lang_choice: 
-                st.session_state.user_language = "kz"
-            else: 
-                st.session_state.user_language = "en"
+            if "Русский" in lang_choice: st.session_state.user_language = "ru"
+            elif "Қазақша" in lang_choice: st.session_state.user_language = "kz"
+            else: st.session_state.user_language = "en"
             st.session_state.language_set = True
             st.rerun()
         else:
-            # После первого запуска — только код языка
             lang_code = st.session_state.user_language.upper()
-            st.markdown(f"<p class='header-lang'>{lang_code}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size: 14px; text-align: right;'>{lang_code}</p>", unsafe_allow_html=True)
 
-    st.markdown("---")
+    st.divider()
 
-    # ======== ФОРМА ВХОДА 420px ========
-    st.markdown("<div class='login-form'>", unsafe_allow_html=True)
+    # ЦЕНТРИРОВАНИЕ ФОРМЫ через колонки Streamlit (вместо ломающего CSS)
+    col_empty1, col_form, col_empty2 = st.columns([1, 2, 1])
     
-    tab_login, tab_reg = st.tabs([t("login"), t("register")])
-    
-    with tab_login:
-        email = st.text_input(t("email_phone"), key="login_email_tz1")
-        password = st.text_input(t("password"), type="password", key="login_pass_tz1")
+    with col_form:
+        tab_login, tab_reg = st.tabs([t("login"), t("register")])
         
-        if st.button(t("login_btn"), type="primary", use_container_width=True):
-            if email and password:
-                st.session_state.user_email = email
-                st.session_state.auth_passed = True
-                st.rerun()
-            else:
-                st.warning(t("fill_all_fields"))
+        with tab_login:
+            email = st.text_input(t("email_phone"), key="login_email_tz1")
+            password = st.text_input(t("password"), type="password", key="login_pass_tz1")
+            
+            if st.button(t("login_btn"), type="primary", use_container_width=True):
+                if email and password:
+                    st.session_state.user_email = email
+                    st.session_state.auth_passed = True
+                    st.rerun()
+                else:
+                    st.warning(t("fill_all_fields"))
 
-    with tab_reg:
-        # Почта + Получить код (без разделителя после)
-        reg_email = st.text_input(t("email_phone"), key="reg_email_tz1")
-        if st.button(t("get_code"), use_container_width=True):
-            if reg_email: 
-                st.success(t("code_sent").format(email=reg_email))
-        
-        # Код + Пароль + Зарегистрироваться (разделитель убран)
-        reg_code = st.text_input(t("code_from_message"), key="reg_code_tz1")
-        reg_pass = st.text_input(t("create_password"), type="password", key="reg_pass_tz1")
-        
-        if st.button(t("register_btn"), type="primary", use_container_width=True):
-            if reg_code == "1234" and reg_email and reg_pass:
-                st.session_state.user_email = reg_email
-                st.session_state.auth_passed = True
-                st.rerun()
-            else:
-                st.warning(t("check_code"))
-    
-    st.markdown("</div>", unsafe_allow_html=True)
+        with tab_reg:
+            reg_email = st.text_input(t("email_phone"), key="reg_email_tz1")
+            if st.button(t("get_code"), use_container_width=True):
+                if reg_email: 
+                    st.success(t("code_sent").format(email=reg_email))
+            
+            reg_code = st.text_input(t("code_from_message"), key="reg_code_tz1")
+            reg_pass = st.text_input(t("create_password"), type="password", key="reg_pass_tz1")
+            
+            if st.button(t("register_btn"), type="primary", use_container_width=True):
+                if reg_code == "1234" and reg_email and reg_pass:
+                    st.session_state.user_email = reg_email
+                    st.session_state.auth_passed = True
+                    st.rerun()
+                else:
+                    st.warning(t("check_code"))
     
     st.stop()
+
+# =========================
+# ЭКРАН 2: ОНБОРДИНГ (ВЫБОР ТАРИФА)
 
 # =========================
 # ЭКРАН 2: ОНБОРДИНГ (ВЫБОР ТАРИФА)
