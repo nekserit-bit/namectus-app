@@ -338,7 +338,7 @@ if not st.session_state.auth_passed:
     col_logo, col_title, col_lang = st.columns([0.15, 2.5, 1])
 
     with col_logo:
-        st.image("logo_new.png", width=60, clamp=True, output_format="PNG")
+        st.image("logo.png", width=60, clamp=True, output_format="PNG")
 
     with col_title:
         st.markdown("<h2 style='margin-top: 15px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
