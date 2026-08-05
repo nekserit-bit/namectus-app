@@ -335,10 +335,10 @@ if not st.session_state.auth_passed:
     )
 
     # Шапка: Логотип, Название и Язык
-    col_logo, col_title, col_lang = st.columns([0.15, 2.5, 1])
+    col_logo, col_title, col_lang = st.columns([1, 6, 2])
 
     with col_logo:
-        st.image("logo.png", width=60, clamp=True, output_format="PNG")
+        st.image("logo.png", width=50, use_container_width=False)
 
     with col_title:
         st.markdown("<h2 style='margin-top: 15px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
@@ -346,10 +346,9 @@ if not st.session_state.auth_passed:
     with col_lang:
         lang = st.selectbox(
             "",
-            ["🇷 Русский", "🇰 Қазақша", " English"],
+            ["🇷 Русский", " Қазақша", " English"],
             label_visibility="collapsed"
         )
-
         if "Русский" in lang:
             st.session_state.user_language = "ru"
         elif "Қазақша" in lang:
