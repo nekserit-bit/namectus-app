@@ -335,13 +335,11 @@ if not st.session_state.auth_passed:
     )
 
     # Шапка: Логотип и Название (первая строка)
-    st_col1, st_col2 = st.columns([0.5, 3])
+    st_col1, st_col2 = st.columns([1, 5])
     
     with st_col1:
         try:
-            st.image("logo.png", width=60, use_container_width=False)
-        except:
-            st.markdown("👁️")  # Заглушка, если файл не найден
+            st.image("logo.png", width=80)
     
     with st_col2:
         st.markdown("<h2 style='margin-top: 15px;'>NAMECTUS v1.0</h2>", unsafe_allow_html=True)
