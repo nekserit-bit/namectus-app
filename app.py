@@ -320,15 +320,20 @@ def get_days_left():
     return max(0, (end_date - datetime.now()).days)
 
 # =========================
-# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + ФОРМА)
+# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + НОВАЯ РЕГИСТРАЦИЯ)
 # =========================
 if not st.session_state.auth_passed:
 
-    # Делаем верхние отступы минимальными
+    # Агрессивно убираем отступы сверху
     st.markdown(
         """
         <style>
-        .block-container { padding-top: 0.5rem; padding-bottom: 0rem; }
+        .block-container { 
+            padding-top: 0rem !important; 
+            padding-bottom: 0rem !important;
+            margin-top: -3rem; 
+        }
+        header[data-testid="stHeader"] { display: none; }
         </style>
         """,
         unsafe_allow_html=True
@@ -344,7 +349,6 @@ if not st.session_state.auth_passed:
         st.markdown("<h3 style='margin-top: 12px;'>NAMECTUS v1.0</h3>", unsafe_allow_html=True)
 
     with col_lang:
-        # Компактный выпадающий список вместо радио-кнопок (экономит место по вертикали)
         current_idx = 0 if st.session_state.user_language == "ru" else (1 if st.session_state.user_language == "kz" else 2)
         lang = st.selectbox(
             "Язык",
@@ -360,8 +364,8 @@ if not st.session_state.auth_passed:
         else:
             st.session_state.user_language = "en"
 
-    # Минимальный отступ и тонкая линия вместо огромной пустоты
-    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+    # Тонкая линия разделитель
+    st.markdown("<div style='height: 5px;'></div>", unsafe_allow_html=True)
     st.divider()
 
     # ЦЕНТРИРОВАНИЕ ФОРМЫ
@@ -383,24 +387,36 @@ if not st.session_state.auth_passed:
                     st.warning(t("fill_all_fields"))
 
         with tab_reg:
-            reg_email = st.text_input(t("email_phone"), key="reg_email_tz1")
-            if st.button(t("get_code"), use_container_width=True):
-                if reg_email:
-                    st.success(t("code_sent").format(email=reg_email))
+            # НОВАЯ ЛОГИКА РЕГИСТРАЦИИ
+            reg_email = st.text_input(t("email_phone"), key="reg_email_new")
+            reg_pass = st.text_input(t("password"), type="password", key="reg_pass_new")
+            reg_pass_confirm = st.text_input("Подтвердите пароль", type="password", key="reg_pass_confirm_new")
+            
+            # Кнопка получения кода
+            if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
+                if reg_email and reg_pass and reg_pass_confirm:
+                    if reg_pass != reg_pass_confirm:
+                        st.error("Пароли не совпадают!")
+                    else:
+                        st.success(t("code_sent").format(email=reg_email))
+                else:
+                    st.warning(t("fill_all_fields"))
 
-            reg_code = st.text_input(t("code_from_message"), key="reg_code_tz1")
-            reg_pass = st.text_input(t("create_password"), type="password", key="reg_pass_tz1")
-
-            if st.button(t("register_btn"), type="primary", use_container_width=True):
-                if reg_code == "1234" and reg_email and reg_pass:
-                    st.session_state.user_email = reg_email
-                    st.session_state.auth_passed = True
-                    st.rerun()
+            # Поле кода и кнопка регистрации
+            reg_code = st.text_input(t("code_from_message"), key="reg_code_new")
+            
+            if st.button(t("register_btn"), type="primary", use_container_width=True, key="btn_reg_new"):
+                if reg_code == "1234" and reg_email and reg_pass and reg_pass_confirm:
+                    if reg_pass == reg_pass_confirm:
+                        st.session_state.user_email = reg_email
+                        st.session_state.auth_passed = True
+                        st.rerun()
+                    else:
+                        st.error("Пароли не совпадают!")
                 else:
                     st.warning(t("check_code"))
 
     st.stop()
-
 # =========================
 # ЭКРАН 2: ОНБОРДИНГ (ВЫБОР ТАРИФА)
 # =========================
