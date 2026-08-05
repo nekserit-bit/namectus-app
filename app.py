@@ -320,47 +320,36 @@ def get_days_left():
     return max(0, (end_date - datetime.now()).days)
 
 # =========================
-# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (ЛОГО + ЯЗЫК + ФОРМА)
+# ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + ФОРМА)
 # =========================
 if not st.session_state.auth_passed:
 
-    # Минимальные стили для отступов
+    # Делаем верхние отступы минимальными
     st.markdown(
         """
         <style>
-        .block-container { padding-top: 1rem; }
+        .block-container { padding-top: 0.5rem; padding-bottom: 0rem; }
         </style>
         """,
         unsafe_allow_html=True
     )
 
-    # Логотип (отдельно, без колонок)
-    st.image("logo.png", width=80)
-    
-    # Название (рядом через negative margin)
-    st.markdown("""
-        <style>
-        .logo-title {
-            margin-top: -70px;
-            margin-left: 100px;
-            font-size: 32px;
-            font-weight: bold;
-        }
-        </style>
-        <div class="logo-title">NAMECTUS v1.0</div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+    # Шапка в одну строку: Логотип, Название, Язык
+    col_logo, col_title, col_lang = st.columns([0.5, 3, 2])
 
-    # Переключатель языка (справа)
-    col_empty, col_lang = st.columns([3, 1])
-    
+    with col_logo:
+        st.image("logo.png", width=60)
+
+    with col_title:
+        st.markdown("<h3 style='margin-top: 12px;'>NAMECTUS v1.0</h3>", unsafe_allow_html=True)
+
     with col_lang:
-        st.markdown("**Язык:**")
-        lang = st.radio(
-            "",
-            [" Русский", "🇰 Қазақша", "🇬 English"],
-            horizontal=True,
+        # Компактный выпадающий список вместо радио-кнопок (экономит место по вертикали)
+        current_idx = 0 if st.session_state.user_language == "ru" else (1 if st.session_state.user_language == "kz" else 2)
+        lang = st.selectbox(
+            "Язык",
+            ["🇷🇺 Русский", "🇰🇿 Қазақша", "🇬🇧 English"],
+            index=current_idx,
             label_visibility="collapsed"
         )
         
@@ -371,6 +360,8 @@ if not st.session_state.auth_passed:
         else:
             st.session_state.user_language = "en"
 
+    # Минимальный отступ и тонкая линия вместо огромной пустоты
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
     st.divider()
 
     # ЦЕНТРИРОВАНИЕ ФОРМЫ
