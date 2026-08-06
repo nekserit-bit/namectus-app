@@ -462,7 +462,7 @@ if not st.session_state.auth_passed:
 if st.session_state.user_tariff is None:
     import streamlit.components.v1 as components
 
-    # БАЗОВАЯ ВАЛЮТА ПРОДУКТА — ЕВРО (европейский рынок)
+    # БАЗОВАЯ ВАЛЮТА ПРОДУКТА — ЕВРО
     PRICES_EUR = {
         "business":     {"price": 20,  "extra": 10, "unit": "источник трафика"},
         "agency_start": {"price": 50,  "extra": 5,  "unit": "проект"},
@@ -470,11 +470,10 @@ if st.session_state.user_tariff is None:
         "agency_pro":   {"price": 300, "extra": 5,  "unit": "проект"},
         "enterprise":   {"price": 500, "extra": 5,  "unit": "проект"},
     }
-    # Сколько единиц валюты показа стоит 1 евро (фикс для прототипа)
     RATES = {"€": 1, "$": 1.1, "₽": 100, "₸": 550}
-    SYMBOLS = ["€", "$", "₽", ""]
+    SYMBOLS = ["€", "$", "₽", "₸"]
 
-    # Шапка: логотип, название и ЛОКАЛЬНОЕ время пользователя
+    # Шапка
     h1, h2, h3 = st.columns([0.5, 4, 2])
     with h1:
         st.image("logo.png", width=50)
@@ -498,41 +497,48 @@ if st.session_state.user_tariff is None:
     st.markdown(f"### 👋 Добро пожаловать, {st.session_state.user_email}!")
     st.markdown("NAMECTUS следит за вашей рекламой и находит проблемы до того, как они сольют бюджет.")
 
-    # Триал: одна компактная кнопка
-    if st.button("🎁 Попробовать бесплатно — 10 дней • 1 кабинет • оплата не нужна", type="primary", use_container_width=True):
-        st.session_state.user_tariff = "trial"
-        st.session_state.trial_end = datetime.now() + timedelta(days=10)
-        st.rerun()
+    # ДВЕ КОЛОНКИ: Слева триал, справа платные
+    col_trial, col_paid = st.columns([1, 2])
 
-    st.markdown("### 💎 Платные тарифы")
+    with col_trial:
+        st.markdown("###  Попробовать бесплатно")
+        st.caption("10 дней • 1 кабинет")
+        if st.button("Начать триал", type="primary", use_container_width=True):
+            st.session_state.user_tariff = "trial"
+            st.session_state.trial_end = datetime.now() + timedelta(days=10)
+            st.rerun()
 
-    col_cur, col_spacer = st.columns([1, 3])
-    with col_cur:
-        cur = st.selectbox("Валюта оплаты", SYMBOLS,
-                           index=SYMBOLS.index(st.session_state.user_currency) if st.session_state.user_currency in SYMBOLS else 0)
-        st.session_state.user_currency = cur
+    with col_paid:
+        st.markdown("### 💎 Платные тарифы")
+        
+        col_cur, col_spacer = st.columns([1, 3])
+        with col_cur:
+            cur = st.selectbox("Валюта", SYMBOLS,
+                               index=SYMBOLS.index(st.session_state.user_currency) if st.session_state.user_currency in SYMBOLS else 0)
+            st.session_state.user_currency = cur
 
-    def price(eur):
-        v = eur * RATES[cur]
-        v = int(round(v, -1)) if cur in ("₽", "") else int(round(v))
-        return f"{v:,} {cur}".replace(",", " ")
+        def price(eur):
+            v = eur * RATES[cur]
+            v = int(round(v, -1)) if cur in ("₽", "₸") else int(round(v))
+            return f"{v:,} {cur}".replace(",", " ")
 
-    options_keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
-    options_text = [
-        f"Бизнес-клиент — {price(20)}/мес — 1 источник трафика",
-        f"Agency Start — {price(50)}/мес — до 5 проектов",
-        f"Agency — {price(150)}/мес — до 20 проектов",
-        f"Agency Pro — {price(300)}/мес — до 50 проектов",
-        f"Enterprise — {price(500)}/мес — от 100 проектов",
-    ]
-    chosen = st.selectbox("Тариф", options_text)
-    chosen_key = options_keys[options_text.index(chosen)]
+        options_keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
+        options_text = [
+            f"Бизнес-клиент — {price(20)}/мес — 1 источник",
+            f"Agency Start — {price(50)}/мес — до 5 проектов",
+            f"Agency — {price(150)}/мес — до 20 проектов",
+            f"Agency Pro — {price(300)}/мес — до 50 проектов",
+            f"Enterprise — {price(500)}/мес — от 100 проектов",
+        ]
+        chosen = st.selectbox("Тариф", options_text)
+        chosen_key = options_keys[options_text.index(chosen)]
 
-    if st.button("Подключить тариф", use_container_width=True):
-        st.session_state.terms_tariff = chosen_key
+        if st.button("Подключить тариф", use_container_width=True):
+            st.session_state.terms_tariff = chosen_key
 
-    # Условия, галочка и счёт
+    # Условия, галочка и счёт (появляются под колонками)
     if st.session_state.get("terms_tariff"):
+        st.divider()
         k = st.session_state.terms_tariff
         info = TARIFFS[k]
         p = PRICES_EUR[k]
@@ -549,7 +555,7 @@ if st.session_state.user_tariff is None:
                 st.session_state.user_tariff = k
                 st.session_state.sub_end = datetime.now() + timedelta(days=30)
                 st.session_state.terms_tariff = None
-                st.success("Счёт сформирован (заглушка). Когда подключишь ТОО/самозанятость, здесь появится настоящий счёт с реквизитами.")
+                st.success("Счёт сформирован (заглушка).")
                 st.rerun()
 
     st.stop()
@@ -595,10 +601,10 @@ with col_y:
             # Здесь потом будет модалка докупки
 with col_g:
     st.markdown("#### 🔵 Google Ads")
-    st.button("Скоро", use_container_width=True, disabled=True)
+    st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
 with col_m:
     st.markdown("#### 🔷 Meta Ads")
-    st.button("Скоро", use_container_width=True, disabled=True)
+    st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_m")
 
 st.markdown("---")
 
