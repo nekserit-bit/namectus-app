@@ -497,25 +497,38 @@ if st.session_state.user_tariff is None:
     st.markdown(f"### 👋 Добро пожаловать, {st.session_state.user_email}!")
     st.markdown("NAMECTUS следит за вашей рекламой и находит проблемы до того, как они сольют бюджет.")
 
-    # ДВЕ КОЛОНКИ: Слева триал, справа платные
-    col_trial, col_paid = st.columns([1, 2])
+    # ТРИ КОЛОНКИ: триал | пустая | платные
+    col_trial, col_gap, col_paid = st.columns([2, 0.5, 1.2])
 
     with col_trial:
         st.markdown("###  Попробовать бесплатно")
         st.caption("10 дней • 1 кабинет")
-        if st.button("Начать триал", type="primary", use_container_width=True):
+        st.markdown("""
+        <style>
+        .green-trial-btn button {
+            background-color: #2e7d32 !important;
+            color: white !important;
+            border: none !important;
+        }
+        .green-trial-btn button:hover {
+            background-color: #1b5e20 !important;
+        }
+        </style>
+        <div class="green-trial-btn">
+        """, unsafe_allow_html=True)
+        if st.button("Начать бесплатный период", use_container_width=True, key="btn_trial_green"):
             st.session_state.user_tariff = "trial"
             st.session_state.trial_end = datetime.now() + timedelta(days=10)
             st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with col_paid:
         st.markdown("### 💎 Платные тарифы")
         
-        col_cur, col_spacer = st.columns([1, 3])
-        with col_cur:
-            cur = st.selectbox("Валюта", SYMBOLS,
-                               index=SYMBOLS.index(st.session_state.user_currency) if st.session_state.user_currency in SYMBOLS else 0)
-            st.session_state.user_currency = cur
+        cur = st.selectbox("Валюта", SYMBOLS,
+                           index=SYMBOLS.index(st.session_state.user_currency) if st.session_state.user_currency in SYMBOLS else 0,
+                           key="cur_select_onboard")
+        st.session_state.user_currency = cur
 
         def price(eur):
             v = eur * RATES[cur]
@@ -530,10 +543,10 @@ if st.session_state.user_tariff is None:
             f"Agency Pro — {price(300)}/мес — до 50 проектов",
             f"Enterprise — {price(500)}/мес — от 100 проектов",
         ]
-        chosen = st.selectbox("Тариф", options_text)
+        chosen = st.selectbox("Тариф", options_text, key="tariff_select_onboard")
         chosen_key = options_keys[options_text.index(chosen)]
 
-        if st.button("Подключить тариф", use_container_width=True):
+        if st.button("Подключить тариф", use_container_width=True, key="btn_pick_tariff"):
             st.session_state.terms_tariff = chosen_key
 
     # Условия, галочка и счёт (появляются под колонками)
@@ -542,16 +555,16 @@ if st.session_state.user_tariff is None:
         k = st.session_state.terms_tariff
         info = TARIFFS[k]
         p = PRICES_EUR[k]
-        st.markdown(f"#### 📄 Условия тарифа «{info['name']}»")
+        st.markdown(f"####  Условия тарифа «{info['name']}»")
         st.markdown(f"""
 - Базовая цена: **{price(p['price'])}/мес** (фиксировано в евро: {p['price']} €)
 - Включено: **{info['limit']}** {p['unit']}
 - Дополнительная единица: **+{price(p['extra'])}/мес** за {p['unit']}{' (максимум ' + str(info['max_extra']) + ')' if info['max_extra'] else ' (без лимита)'}
 - Оплата: картой или по счёту для юрлиц. Подписка — 30 дней.
 """)
-        agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)")
+        agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)", key="agree_terms")
         if agree:
-            if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True):
+            if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_tariff"):
                 st.session_state.user_tariff = k
                 st.session_state.sub_end = datetime.now() + timedelta(days=30)
                 st.session_state.terms_tariff = None
