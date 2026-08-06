@@ -460,84 +460,97 @@ if not st.session_state.auth_passed:
 # ЭКРАН 2: ОНБОРДИНГ (ВЫБОР ТАРИФА)
 # =========================
 if st.session_state.user_tariff is None:
-    # Шапка с логотипом и названием
-    h1, h2 = st.columns([0.5, 5])
+    import streamlit.components.v1 as components
+
+    # БАЗОВАЯ ВАЛЮТА ПРОДУКТА — ЕВРО (европейский рынок)
+    PRICES_EUR = {
+        "business":     {"price": 20,  "extra": 10, "unit": "источник трафика"},
+        "agency_start": {"price": 50,  "extra": 5,  "unit": "проект"},
+        "agency":       {"price": 150, "extra": 5,  "unit": "проект"},
+        "agency_pro":   {"price": 300, "extra": 5,  "unit": "проект"},
+        "enterprise":   {"price": 500, "extra": 5,  "unit": "проект"},
+    }
+    # Сколько единиц валюты показа стоит 1 евро (фикс для прототипа)
+    RATES = {"€": 1, "$": 1.1, "₽": 100, "₸": 550}
+    SYMBOLS = ["€", "$", "₽", ""]
+
+    # Шапка: логотип, название и ЛОКАЛЬНОЕ время пользователя
+    h1, h2, h3 = st.columns([0.5, 4, 2])
     with h1:
         st.image("logo.png", width=50)
     with h2:
         st.markdown("<h3 style='margin-top: 8px;'>NAMECTUS v1.0</h3>", unsafe_allow_html=True)
+    with h3:
+        components.html("""
+        <div id='nc_clock' style='color:#9aa0a6; font-size:13px; text-align:right; padding-top:12px;'></div>
+        <script>
+        function nc_tick(){
+            var n = new Date();
+            document.getElementById('nc_clock').innerText =
+                n.toLocaleDateString('ru-RU') + ' ' + n.toLocaleTimeString('ru-RU');
+        }
+        nc_tick();
+        setInterval(nc_tick, 1000);
+        </script>
+        """, height=45)
     st.divider()
 
     st.markdown(f"### 👋 Добро пожаловать, {st.session_state.user_email}!")
-    st.markdown("NAMECTUS следит за вашей рекламой и находит проблемы до того, как они сольют бюджет. Выберите, как начать:")
+    st.markdown("NAMECTUS следит за вашей рекламой и находит проблемы до того, как они сольют бюджет.")
 
-    # --- Бесплатный триал ---
-    st.markdown("""
-    <div style='border: 2px solid #2e7d32; border-radius: 12px; padding: 14px; margin-bottom: 16px;'>
-    <b>🎁 Попробовать бесплатно — 10 дней</b><br>
-    1 рекламный кабинет • все функции • оплата не нужна
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Начать бесплатный период", type="primary", use_container_width=True):
+    # Триал: одна компактная кнопка
+    if st.button("🎁 Попробовать бесплатно — 10 дней • 1 кабинет • оплата не нужна", type="primary", use_container_width=True):
         st.session_state.user_tariff = "trial"
         st.session_state.trial_end = datetime.now() + timedelta(days=10)
         st.rerun()
 
     st.markdown("### 💎 Платные тарифы")
-    st.caption("Тариф можно сменить, а дополнительные места докупить в любой момент.")
 
-    def pick_tariff(key):
-        st.session_state.user_tariff = key
-        st.session_state.sub_end = datetime.now() + timedelta(days=30)
-        st.rerun()
+    col_cur, col_spacer = st.columns([1, 3])
+    with col_cur:
+        cur = st.selectbox("Валюта оплаты", SYMBOLS,
+                           index=SYMBOLS.index(st.session_state.user_currency) if st.session_state.user_currency in SYMBOLS else 0)
+        st.session_state.user_currency = cur
 
-    # Ряд 1
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown("""<div style='border:1px solid #666; border-radius:10px; padding:12px;'>
-        <b>Бизнес-клиент</b><br><b>2 000 ₽/мес</b><br>
-        Рекламодателю, который контролирует свой бюджет.<br>
-        • 1 источник трафика (Яндекс / Google / Meta)<br>• Доп. источник: +1 000 ₽/мес
-        </div>""", unsafe_allow_html=True)
-        if st.button("Выбрать", key="pick_business", use_container_width=True):
-            pick_tariff("business")
-    with c2:
-        st.markdown("""<div style='border:1px solid #666; border-radius:10px; padding:12px;'>
-        <b>Agency Start</b><br><b>5 000 ₽/мес</b><br>
-        Небольшому агентству.<br>
-        • До 5 проектов<br>• Доп. проект: +500 ₽/мес (до 18)
-        </div>""", unsafe_allow_html=True)
-        if st.button("Выбрать", key="pick_agency_start", use_container_width=True):
-            pick_tariff("agency_start")
-    with c3:
-        st.markdown("""<div style='border:1px solid #666; border-radius:10px; padding:12px;'>
-        <b>Agency</b><br><b>15 000 ₽/мес</b><br>
-        Растущему агентству.<br>
-        • До 20 проектов<br>• Доп. проект: +500 ₽/мес (до 45)
-        </div>""", unsafe_allow_html=True)
-        if st.button("Выбрать", key="pick_agency", use_container_width=True):
-            pick_tariff("agency")
+    def price(eur):
+        v = eur * RATES[cur]
+        v = int(round(v, -1)) if cur in ("₽", "") else int(round(v))
+        return f"{v:,} {cur}".replace(",", " ")
 
-    # Ряд 2
-    c4, c5, c6 = st.columns(3)
-    with c4:
-        st.markdown("""<div style='border:1px solid #666; border-radius:10px; padding:12px;'>
-        <b>Agency Pro</b><br><b>30 000 ₽/мес</b><br>
-        Большой команде.<br>
-        • До 50 проектов<br>• Доп. проект: +500 ₽/мес (до 90)
-        </div>""", unsafe_allow_html=True)
-        if st.button("Выбрать", key="pick_agency_pro", use_container_width=True):
-            pick_tariff("agency_pro")
-    with c5:
-        st.markdown("""<div style='border:1px solid #666; border-radius:10px; padding:12px;'>
-        <b>Enterprise</b><br><b>50 000 ₽/мес</b><br>
-        Крупным игрокам.<br>
-        • От 100 проектов<br>• Расширение — индивидуально
-        </div>""", unsafe_allow_html=True)
-        if st.button("Выбрать", key="pick_enterprise", use_container_width=True):
-            pick_tariff("enterprise")
+    options_keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
+    options_text = [
+        f"Бизнес-клиент — {price(20)}/мес — 1 источник трафика",
+        f"Agency Start — {price(50)}/мес — до 5 проектов",
+        f"Agency — {price(150)}/мес — до 20 проектов",
+        f"Agency Pro — {price(300)}/мес — до 50 проектов",
+        f"Enterprise — {price(500)}/мес — от 100 проектов",
+    ]
+    chosen = st.selectbox("Тариф", options_text)
+    chosen_key = options_keys[options_text.index(chosen)]
 
-    st.caption("Оплата: картой (физлица) или по счёту для юрлиц — на следующем шаге.")
+    if st.button("Подключить тариф", use_container_width=True):
+        st.session_state.terms_tariff = chosen_key
+
+    # Условия, галочка и счёт
+    if st.session_state.get("terms_tariff"):
+        k = st.session_state.terms_tariff
+        info = TARIFFS[k]
+        p = PRICES_EUR[k]
+        st.markdown(f"#### 📄 Условия тарифа «{info['name']}»")
+        st.markdown(f"""
+- Базовая цена: **{price(p['price'])}/мес** (фиксировано в евро: {p['price']} €)
+- Включено: **{info['limit']}** {p['unit']}
+- Дополнительная единица: **+{price(p['extra'])}/мес** за {p['unit']}{' (максимум ' + str(info['max_extra']) + ')' if info['max_extra'] else ' (без лимита)'}
+- Оплата: картой или по счёту для юрлиц. Подписка — 30 дней.
+""")
+        agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)")
+        if agree:
+            if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True):
+                st.session_state.user_tariff = k
+                st.session_state.sub_end = datetime.now() + timedelta(days=30)
+                st.session_state.terms_tariff = None
+                st.success("Счёт сформирован (заглушка). Когда подключишь ТОО/самозанятость, здесь появится настоящий счёт с реквизитами.")
+                st.rerun()
 
     st.stop()
 
