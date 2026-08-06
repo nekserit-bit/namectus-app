@@ -5,6 +5,8 @@ import os
 from datetime import datetime, timedelta
 import requests
 from dotenv import load_dotenv
+import streamlit.components.v1 as components
+import math
 
 # =========================
 # БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
