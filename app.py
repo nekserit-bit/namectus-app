@@ -516,13 +516,18 @@ if st.session_state.user_tariff is None:
     with col_trial:
         st.markdown("###  Попробовать бесплатно")
         st.caption("10 дней • 1 кабинет")
-        # Обёртка для центрирования кнопки
-        btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
-        with btn_col2:
-            if st.button("Начать бесплатный период", type="primary", key="btn_trial_green"):
-                st.session_state.user_tariff = "trial"
-                st.session_state.trial_end = datetime.now() + timedelta(days=10)
-                st.rerun()
+        # Задаём ширину кнопки через CSS
+        st.markdown("""
+        <style>
+        button[kind="primary"][aria-label="Начать бесплатный период"] {
+            min-width: 320px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        if st.button("Начать бесплатный период", type="primary", key="btn_trial_green"):
+            st.session_state.user_tariff = "trial"
+            st.session_state.trial_end = datetime.now() + timedelta(days=10)
+            st.rerun()
 
     with col_paid:
         st.markdown("### 💎 Платные тарифы")
