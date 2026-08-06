@@ -471,7 +471,7 @@ if st.session_state.user_tariff is None:
         "enterprise":   {"price": 500, "extra": 5,  "unit": "проект"},
     }
     RATES = {"€": 1, "$": 1.1, "₽": 100, "₸": 550}
-    SYMBOLS = ["€", "$", "₽", ""]
+    SYMBOLS = ["€", "$", "₽", "₸"]
 
     # Шапка
     h1, h2, h3 = st.columns([0.5, 4, 2])
@@ -494,7 +494,7 @@ if st.session_state.user_tariff is None:
         """, height=45)
     st.divider()
 
-    # CSS для зелёной кнопки триала
+    # CSS для зелёной кнопки
     st.markdown("""
     <style>
     div[data-testid="stButton"] button[kind="primary"] {
@@ -503,10 +503,6 @@ if st.session_state.user_tariff is None:
     }
     div[data-testid="stButton"] button[kind="primary"]:hover {
         background-color: #1b5e20 !important;
-    }
-    /* Ограничиваем ширину кнопки триала */
-    div[data-testid="stButton"] button[kind="primary"][aria-label="Начать бесплатный период"] {
-        max-width: 300px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -520,10 +516,13 @@ if st.session_state.user_tariff is None:
     with col_trial:
         st.markdown("###  Попробовать бесплатно")
         st.caption("10 дней • 1 кабинет")
-        if st.button("Начать бесплатный период", type="primary", use_container_width=True, key="btn_trial_green"):
-            st.session_state.user_tariff = "trial"
-            st.session_state.trial_end = datetime.now() + timedelta(days=10)
-            st.rerun()
+        # Обёртка для центрирования кнопки
+        btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
+        with btn_col2:
+            if st.button("Начать бесплатный период", type="primary", key="btn_trial_green"):
+                st.session_state.user_tariff = "trial"
+                st.session_state.trial_end = datetime.now() + timedelta(days=10)
+                st.rerun()
 
     with col_paid:
         st.markdown("### 💎 Платные тарифы")
@@ -552,7 +551,7 @@ if st.session_state.user_tariff is None:
         if st.button("Подключить тариф", use_container_width=True, key="btn_pick_tariff"):
             st.session_state.terms_tariff = chosen_key
 
-    # Условия, галочка и счёт (появляются под колонками)
+    # Условия, галочка и счёт
     if st.session_state.get("terms_tariff"):
         st.divider()
         k = st.session_state.terms_tariff
@@ -567,7 +566,7 @@ if st.session_state.user_tariff is None:
 """)
         agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)", key="agree_terms")
         if agree:
-            if st.button(" Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_tariff"):
+            if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_tariff"):
                 st.session_state.user_tariff = k
                 st.session_state.sub_end = datetime.now() + timedelta(days=30)
                 st.session_state.terms_tariff = None
