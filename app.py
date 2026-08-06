@@ -578,12 +578,40 @@ if st.session_state.user_tariff is None:
 # =========================
 # ЭКРАН 3: ШАПКА РАБОЧЕГО ПРОСТРАНСТВА
 # =========================
-now = datetime.now()
-st.markdown(f"# Namectus v1.0 | {now.strftime('%d.%m.%Y %H:%M:%S')}")
+import math
 
-# Инфо-панель справа
+# Исправляем расчёт дней (округляем вверх)
+def get_days_left():
+    end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
+    if not end_date: return 0
+    delta = end_date - datetime.now()
+    return max(0, math.ceil(delta.total_seconds() / 86400))
+
+# Шапка: логотип, название и локальное время
+h1, h2, h3 = st.columns([0.5, 4, 2])
+with h1:
+    st.image("logo.png", width=50)
+with h2:
+    st.markdown("<h3 style='margin-top: 8px;'>NAMECTUS v1.0</h3>", unsafe_allow_html=True)
+with h3:
+    components.html("""
+    <div id='nc_clock' style='color:#9aa0a6; font-size:13px; text-align:right; padding-top:12px;'></div>
+    <script>
+    function nc_tick(){
+        var n = new Date();
+        document.getElementById('nc_clock').innerText =
+            n.toLocaleDateString('ru-RU') + ' ' + n.toLocaleTimeString('ru-RU');
+    }
+    nc_tick();
+    setInterval(nc_tick, 1000);
+    </script>
+    """, height=45)
+st.divider()
+
+# Инфо-панель: email, тариф, дни
 col_info1, col_info2, col_info3 = st.columns([3, 1, 2])
-with col_info1: st.markdown(f"**{st.session_state.user_email}**")
+with col_info1: 
+    st.markdown(f"**{st.session_state.user_email}**")
 with col_info2: 
     tariff_name = "Пробный период" if st.session_state.user_tariff == "trial" else TARIFFS[st.session_state.user_tariff]["name"]
     st.markdown(f"💎 {tariff_name}")
@@ -593,16 +621,23 @@ with col_info3:
 
 st.markdown("---")
 
-# Статус кабинетов
+# Статус подключений (терминология зависит от тарифа)
 current_cabs = len(st.session_state.connected_accounts)
 total_limit = get_total_limit()
-st.markdown(f"### Подключено кабинетов: {current_cabs} из {total_limit}")
+
+# Определяем, что считаем: проекты или источники
+if st.session_state.user_tariff == "business":
+    unit_name = "источник"
+else:
+    unit_name = "проект"
+
+st.markdown(f"### Подключено {unit_name}ов: {current_cabs} из {total_limit}")
 st.progress(min(current_cabs / total_limit, 1.0) if total_limit > 0 else 0)
 
 st.markdown("---")
 st.markdown("### Подключите рекламный кабинет")
 
-# Кнопки подключения (Яндекс активен, остальные заглушки)
+# Кнопки подключения (три в ряд)
 col_y, col_g, col_m = st.columns(3)
 with col_y:
     st.markdown("#### 🔴 Яндекс.Директ")
@@ -612,8 +647,7 @@ with col_y:
             st.success("Яндекс подключён!")
             st.rerun()
         else:
-            st.error("⚠️ Лимит превышен! Нужно докупить кабинет.")
-            # Здесь потом будет модалка докупки
+            st.error(f"⚠️ Лимит превышен! Нужно докупить {unit_name}.")
 with col_g:
     st.markdown("#### 🔵 Google Ads")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
@@ -623,76 +657,15 @@ with col_m:
 
 st.markdown("---")
 
-# Инициализация навигации
-if "nav_screen" not in st.session_state:
-    st.session_state.nav_screen = "scan"
-if "view_mode" not in st.session_state:
-    st.session_state.view_mode = None
-if "selected_project" not in st.session_state:
-    st.session_state.selected_project = None
-if "selected_category" not in st.session_state:
-    st.session_state.selected_category = None
-if "selected_campaign" not in st.session_state:
-    st.session_state.selected_campaign = None
-if "scan_results" not in st.session_state:
-    st.session_state.scan_results = None
-if "history" not in st.session_state:
-    st.session_state.history = load_history()
-
-# Загрузка токена
-if "yandex_token" not in st.session_state and os.path.exists(TOKENS_FILE):
-    try:
-        with open(TOKENS_FILE, 'r', encoding='utf-8') as f:
-            token = json.load(f).get("yandex", {}).get("token")
-            if token: st.session_state["yandex_token"] = token
-    except: pass
-
-# Обработка OAuth
-query_params = st.query_params
-if "code" in query_params and "yandex_token" not in st.session_state:
-    token = exchange_code_for_token(query_params["code"])
-    if token:
-        st.session_state["yandex_token"] = token
-        with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
-            json.dump({"yandex": {"token": token}}, f)
-        st.query_params.clear()
+# Кнопка сканирования
+if current_cabs > 0:
+    if st.button("🔍 Сканировать", type="primary", use_container_width=True, key="btn_scan_main"):
+        st.session_state.nav_screen = "scan"
         st.rerun()
+else:
+    st.info("Подключите хотя бы один рекламный кабинет, чтобы начать сканирование.")
 
-# =========================
-# ЭКРАН: ВХОД
-# =========================
-if "yandex_token" not in st.session_state:
-    st.markdown("### 👋 Добро пожаловать в Namectus")
-    st.markdown("Выберите рекламную платформу для подключения:")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.markdown("""
-        <div style="border: 2px solid #e0e0e0; border-radius: 12px; padding: 20px; text-align: center;">
-            <h3>🔴 Яндекс.Директ</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        auth_url = get_yandex_auth_url()
-        st.markdown(f'[🔐 Войти через Яндекс]({auth_url})')
-
-    with col2:
-        st.markdown("""
-        <div style="border: 2px dashed #e0e0e0; border-radius: 12px; padding: 20px; text-align: center; opacity: 0.6;">
-            <h3>🔵 Google Ads</h3>
-            <p>Скоро будет доступно</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        st.markdown("""
-        <div style="border: 2px dashed #e0e0e0; border-radius: 12px; padding: 20px; text-align: center; opacity: 0.6;">
-            <h3>🔷 Meta Ads</h3>
-            <p>Скоро будет доступно</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.stop()
+st.stop()
 
 # =========================
 # ЭКРАН 1: СКАНИРОВАНИЕ
