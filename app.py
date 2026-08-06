@@ -471,7 +471,7 @@ if st.session_state.user_tariff is None:
         "enterprise":   {"price": 500, "extra": 5,  "unit": "проект"},
     }
     RATES = {"€": 1, "$": 1.1, "₽": 100, "₸": 550}
-    SYMBOLS = ["€", "$", "₽", "₸"]
+    SYMBOLS = ["€", "$", "₽", ""]
 
     # Шапка
     h1, h2, h3 = st.columns([0.5, 4, 2])
@@ -503,6 +503,10 @@ if st.session_state.user_tariff is None:
     }
     div[data-testid="stButton"] button[kind="primary"]:hover {
         background-color: #1b5e20 !important;
+    }
+    /* Ограничиваем ширину кнопки триала */
+    div[data-testid="stButton"] button[kind="primary"][aria-label="Начать бесплатный период"] {
+        max-width: 300px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -563,7 +567,7 @@ if st.session_state.user_tariff is None:
 """)
         agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)", key="agree_terms")
         if agree:
-            if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_tariff"):
+            if st.button(" Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_tariff"):
                 st.session_state.user_tariff = k
                 st.session_state.sub_end = datetime.now() + timedelta(days=30)
                 st.session_state.terms_tariff = None
