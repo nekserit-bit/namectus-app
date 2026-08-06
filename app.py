@@ -494,6 +494,19 @@ if st.session_state.user_tariff is None:
         """, height=45)
     st.divider()
 
+    # CSS для зелёной кнопки триала
+    st.markdown("""
+    <style>
+    div[data-testid="stButton"] button[kind="primary"] {
+        background-color: #2e7d32 !important;
+        color: white !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"]:hover {
+        background-color: #1b5e20 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.markdown(f"### 👋 Добро пожаловать, {st.session_state.user_email}!")
     st.markdown("NAMECTUS следит за вашей рекламой и находит проблемы до того, как они сольют бюджет.")
 
@@ -503,24 +516,10 @@ if st.session_state.user_tariff is None:
     with col_trial:
         st.markdown("###  Попробовать бесплатно")
         st.caption("10 дней • 1 кабинет")
-        st.markdown("""
-        <style>
-        .green-trial-btn button {
-            background-color: #2e7d32 !important;
-            color: white !important;
-            border: none !important;
-        }
-        .green-trial-btn button:hover {
-            background-color: #1b5e20 !important;
-        }
-        </style>
-        <div class="green-trial-btn">
-        """, unsafe_allow_html=True)
-        if st.button("Начать бесплатный период", use_container_width=True, key="btn_trial_green"):
+        if st.button("Начать бесплатный период", type="primary", use_container_width=True, key="btn_trial_green"):
             st.session_state.user_tariff = "trial"
             st.session_state.trial_end = datetime.now() + timedelta(days=10)
             st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
 
     with col_paid:
         st.markdown("### 💎 Платные тарифы")
