@@ -395,8 +395,9 @@ if not st.session_state.auth_passed:
             reg_pass = st.text_input(t("password"), type="password", key="reg_pass_new")
             reg_pass_confirm = st.text_input("Подтвердите пароль", type="password", key="reg_pass_confirm_new")
             
-            # 1. Динамическая проверка пароля (показываем правила ВСЕГДА, даже если поле пустое)
+            # 1. Динамическая проверка пароля
             has_latin = any('a' <= c <= 'z' or 'A' <= c <= 'Z' for c in reg_pass)
+            has_cyrillic = any('а' <= c.lower() <= 'я' or c.lower() == 'ё' for c in reg_pass)
             
             checks = {
                 "length": len(reg_pass) >= 8,
@@ -406,19 +407,23 @@ if not st.session_state.auth_passed:
                 "special": any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in reg_pass)
             }
             
-            # Считаем пароль надежным
-            is_strong = checks["length"] and checks["upper"] and checks["digit"] and has_latin
+            # Пароль надежный, если выполнены правила И нет кириллицы
+            is_strong = checks["length"] and checks["upper"] and checks["digit"] and has_latin and not has_cyrillic
             
-            # Рисуем подсказки (сразу все красные, зеленеют по мере ввода)
+            # Рисуем подсказки
             hint_html = "<div class='password-hint'>"
             hint_html += "<span class='check'>✓</span> Минимум 8 символов<br>" if checks["length"] else "<span class='cross'>✗</span> Минимум 8 символов<br>"
             hint_html += "<span class='check'>✓</span> Латинская заглавная (A-Z)<br>" if checks["upper"] else "<span class='cross'>✗</span> Латинская заглавная (A-Z)<br>"
             hint_html += "<span class='check'>✓</span> Латинская строчная (a-z)<br>" if checks["lower"] else "<span class='cross'>✗</span> Латинская строчная (a-z)<br>"
-            hint_html += "<span class='check'>✓</span> Цифра<br>" if checks["digit"] else "<span class='cross'></span> Цифра<br>"
+            hint_html += "<span class='check'>✓</span> Цифра<br>" if checks["digit"] else "<span class='cross'>✗</span> Цифра<br>"
             hint_html += "<span class='check'>✓</span> Спецсимвол (!@#$%^&*)<br>" if checks["special"] else "<span class='cross'>✗</span> Спецсимвол (!@#$%^&*)<br>"
             hint_html += "</div>"
             
             st.markdown(hint_html, unsafe_allow_html=True)
+            
+            # Явная ругань на русские буквы
+            if has_cyrillic:
+                st.warning("⚠️ В пароле русские буквы! Переключи раскладку на английскую — пароль пишется только латиницей.")
 
             # 2. Кнопка "Получить код"
             if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
@@ -447,7 +452,7 @@ if not st.session_state.auth_passed:
                 else:
                     st.session_state.user_email = reg_email
                     st.session_state.auth_passed = True
-                    st.rerun()    
+                    st.rerun()
 
     st.stop()
 # =========================
