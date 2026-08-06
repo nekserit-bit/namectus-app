@@ -727,7 +727,7 @@ st.progress(min(current_cabs / total_limit, 1.0) if total_limit > 0 else 0)
 # =========================
 # ЭКРАН 2: ВЫБОР РЕЖИМА
 # =========================
-elif st.session_state.nav_screen == "choose_mode":
+if st.session_state.nav_screen == "choose_mode":
     now = datetime.now()
     st.markdown(f"# NAMECTUS v1.1 | {now.strftime('%d.%m.%Y %H:%M:%S')}")
     st.markdown("---")
