@@ -576,18 +576,28 @@ if st.session_state.user_tariff is None:
                 st.rerun()
 
     st.stop()
-
 # =========================
 # ЭКРАН 3: ШАПКА РАБОЧЕГО ПРОСТРАНСТВА
 # =========================
 import math
 
-# Исправляем расчёт дней (округляем вверх)
 def get_days_left():
     end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
     if not end_date: return 0
     delta = end_date - datetime.now()
     return max(0, math.ceil(delta.total_seconds() / 86400))
+
+# Компактные отступы + зелёная кнопка сканирования
+st.markdown("""
+<style>
+h3, h4 { margin-top: 0.3rem !important; margin-bottom: 0.3rem !important; }
+hr { margin: 0.5rem 0 !important; }
+div[data-testid="stButton"] button[kind="primary"] {
+    background-color: #2e7d32 !important;
+    color: white !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # Шапка: логотип, название и локальное время
 h1, h2, h3 = st.columns([0.5, 4, 2])
@@ -612,63 +622,14 @@ st.divider()
 
 # Инфо-панель: email, тариф, дни
 col_info1, col_info2, col_info3 = st.columns([3, 1, 2])
-with col_info1: 
+with col_info1:
     st.markdown(f"**{st.session_state.user_email}**")
-with col_info2: 
+with col_info2:
     tariff_name = "Пробный период" if st.session_state.user_tariff == "trial" else TARIFFS[st.session_state.user_tariff]["name"]
     st.markdown(f"💎 {tariff_name}")
-with col_info3: 
+with col_info3:
     days = get_days_left()
     st.markdown(f"⏳ Осталось: {days} дней")
-
-st.markdown("---")
-
-# Статус подключений (терминология зависит от тарифа)
-current_cabs = len(st.session_state.connected_accounts)
-total_limit = get_total_limit()
-
-# Определяем, что считаем: проекты или источники
-# Для trial и business — источники, для agency — проекты
-if st.session_state.user_tariff in ["trial", "business"]:
-    unit_name = "источник"
-else:
-    unit_name = "проект"
-
-# 1. СНАЧАЛА: Кнопка сканирования или сообщение
-if current_cabs > 0:
-    if st.button("🔍 Сканировать", type="primary", use_container_width=True, key="btn_scan_main"):
-        st.session_state.nav_screen = "scan"
-        st.rerun()
-else:
-    st.info("Подключите хотя бы один рекламный кабинет, чтобы начать сканирование.")
-
-st.markdown("---")
-
-# 2. ПОТОМ: Подключение рекламных кабинетов
-st.markdown("### Подключите рекламный кабинет")
-
-col_y, col_g, col_m = st.columns(3)
-with col_y:
-    st.markdown("#### 🔴 Яндекс.Директ")
-    if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
-        if current_cabs < total_limit:
-            st.session_state.connected_accounts.append({"platform": "yandex", "name": f"Яндекс #{current_cabs+1}", "date": datetime.now()})
-            st.success("Яндекс подключён!")
-            st.rerun()
-        else:
-            st.error(f"⚠️ Лимит превышен! Нужно докупить {unit_name}.")
-with col_g:
-    st.markdown("#### 🔵 Google Ads")
-    st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
-with col_m:
-    st.markdown("#### 🔷 Meta Ads")
-    st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_m")
-
-st.markdown("---")
-
-# 3. В КОНЦЕ: Справочная информация
-st.markdown(f"### Подключено {unit_name}ов: {current_cabs} из {total_limit}")
-st.progress(min(current_cabs / total_limit, 1.0) if total_limit > 0 else 0)
 
 # Инициализация навигации
 if "nav_screen" not in st.session_state:
@@ -704,6 +665,64 @@ if "code" in query_params and "yandex_token" not in st.session_state:
             json.dump({"yandex": {"token": token}}, f)
         st.query_params.clear()
         st.rerun()
+
+st.divider()
+
+current_cabs = len(st.session_state.connected_accounts)
+total_limit = get_total_limit()
+if st.session_state.user_tariff in ["trial", "business"]:
+    unit_name = "источник"
+else:
+    unit_name = "проект"
+
+# 1. СНАЧАЛА: сканирование (компактная зелёная кнопка) или напоминалка
+if current_cabs > 0:
+    if st.button("🔍 Сканировать", type="primary", key="btn_scan_main"):
+        with st.spinner("🔄 Анализируем данные..."):
+            try:
+                SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
+                df = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv")
+                results = analyze_campaigns(df)
+                results = filter_hidden(results, st.session_state.history)
+                if not results:
+                    st.warning("Нет данных")
+                else:
+                    st.session_state.scan_results = results
+                    st.session_state.nav_screen = "choose_mode"
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+else:
+    col_msg, col_empty = st.columns([3, 1])
+    with col_msg:
+        st.info("Подключите хотя бы один рекламный кабинет, чтобы начать сканирование.")
+
+st.divider()
+
+# 2. ПОТОМ: подключение кабинетов (названия — обычным текстом)
+st.markdown("#### Подключите рекламный кабинет")
+col_y, col_g, col_m = st.columns(3)
+with col_y:
+    st.markdown("**🔴 Яндекс.Директ**")
+    if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
+        if current_cabs < total_limit:
+            st.session_state.connected_accounts.append({"platform": "yandex", "name": f"Яндекс #{current_cabs+1}", "date": datetime.now()})
+            st.success("Яндекс подключён!")
+            st.rerun()
+        else:
+            st.error(f"⚠️ Лимит превышен! Нужно докупить {unit_name}.")
+with col_g:
+    st.markdown("**🔵 Google Ads**")
+    st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
+with col_m:
+    st.markdown("**🔷 Meta Ads**")
+    st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_m")
+
+st.divider()
+
+# 3. В КОНЦЕ: справочная информация
+st.markdown(f"Подключено {unit_name}ов: {current_cabs} из {total_limit}")
+st.progress(min(current_cabs / total_limit, 1.0) if total_limit > 0 else 0)
 
 # =========================
 # ЭКРАН 2: ВЫБОР РЕЖИМА
