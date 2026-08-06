@@ -628,18 +628,25 @@ current_cabs = len(st.session_state.connected_accounts)
 total_limit = get_total_limit()
 
 # Определяем, что считаем: проекты или источники
-if st.session_state.user_tariff == "business":
+# Для trial и business — источники, для agency — проекты
+if st.session_state.user_tariff in ["trial", "business"]:
     unit_name = "источник"
 else:
     unit_name = "проект"
 
-st.markdown(f"### Подключено {unit_name}ов: {current_cabs} из {total_limit}")
-st.progress(min(current_cabs / total_limit, 1.0) if total_limit > 0 else 0)
+# 1. СНАЧАЛА: Кнопка сканирования или сообщение
+if current_cabs > 0:
+    if st.button("🔍 Сканировать", type="primary", use_container_width=True, key="btn_scan_main"):
+        st.session_state.nav_screen = "scan"
+        st.rerun()
+else:
+    st.info("Подключите хотя бы один рекламный кабинет, чтобы начать сканирование.")
 
 st.markdown("---")
+
+# 2. ПОТОМ: Подключение рекламных кабинетов
 st.markdown("### Подключите рекламный кабинет")
 
-# Кнопки подключения (три в ряд)
 col_y, col_g, col_m = st.columns(3)
 with col_y:
     st.markdown("#### 🔴 Яндекс.Директ")
@@ -659,15 +666,48 @@ with col_m:
 
 st.markdown("---")
 
-# Кнопка сканирования
-if current_cabs > 0:
-    if st.button("🔍 Сканировать", type="primary", use_container_width=True, key="btn_scan_main"):
-        st.session_state.nav_screen = "scan"
-        st.rerun()
-else:
-    st.info("Подключите хотя бы один рекламный кабинет, чтобы начать сканирование.")
+# 3. В КОНЦЕ: Справочная информация
+st.markdown(f"### Подключено {unit_name}ов: {current_cabs} из {total_limit}")
+st.progress(min(current_cabs / total_limit, 1.0) if total_limit > 0 else 0)
 
-st.stop()
+# Инициализация навигации
+if "nav_screen" not in st.session_state:
+    st.session_state.nav_screen = "scan"
+if "view_mode" not in st.session_state:
+    st.session_state.view_mode = None
+if "selected_project" not in st.session_state:
+    st.session_state.selected_project = None
+if "selected_category" not in st.session_state:
+    st.session_state.selected_category = None
+if "selected_campaign" not in st.session_state:
+    st.session_state.selected_campaign = None
+if "scan_results" not in st.session_state:
+    st.session_state.scan_results = None
+if "history" not in st.session_state:
+    st.session_state.history = load_history()
+
+# Загрузка токена
+if "yandex_token" not in st.session_state and os.path.exists(TOKENS_FILE):
+    try:
+        with open(TOKENS_FILE, 'r', encoding='utf-8') as f:
+            token = json.load(f).get("yandex", {}).get("token")
+            if token: st.session_state["yandex_token"] = token
+    except: pass
+
+# Обработка OAuth
+query_params = st.query_params
+if "code" in query_params and "yandex_token" not in st.session_state:
+    token = exchange_code_for_token(query_params["code"])
+    if token:
+        st.session_state["yandex_token"] = token
+        with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
+            json.dump({"yandex": {"token": token}}, f)
+        st.query_params.clear()
+        st.rerun()
+
+# =========================
+# ЭКРАН 1: СКАНИРОВАНИЕ
+# =========================
 
 # =========================
 # ЭКРАН 1: СКАНИРОВАНИЕ
