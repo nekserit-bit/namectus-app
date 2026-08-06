@@ -706,46 +706,6 @@ if "code" in query_params and "yandex_token" not in st.session_state:
         st.rerun()
 
 # =========================
-# ЭКРАН 1: СКАНИРОВАНИЕ
-# =========================
-
-# =========================
-# ЭКРАН 1: СКАНИРОВАНИЕ
-# =========================
-if st.session_state.nav_screen == "scan":
-    now = datetime.now()
-    st.markdown(f"# NAMECTUS v1.1 | {now.strftime('%d.%m.%Y %H:%M:%S')}")
-    st.markdown("---")
-    
-    st.success("☑ Вы подключены к Яндекс.Директ")
-    st.markdown("Нажмите кнопку ниже, чтобы проверить состояние кампаний.")
-    
-    if st.button("🔍 Сканировать"):
-        with st.spinner("🔄 Анализируем данные..."):
-            try:
-                SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
-                df = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv")
-                results = analyze_campaigns(df)
-                results = filter_hidden(results, st.session_state.history)
-                
-                if not results:
-                    st.warning("Нет данных")
-                    st.stop()
-                
-                st.session_state.scan_results = results
-                st.session_state.nav_screen = "choose_mode"
-                st.rerun()
-            except Exception as e:
-                st.error(f"Ошибка: {e}")
-                if st.button("🧪 Тестовые данные"):
-                    test_data = {'project': ['Bio-wc-service', 'solodent'], 'campaign': ['Баннер', 'Поиск'], 'source': ['yandex', 'yandex'], 'campaign_id': [1, 2], 'date': pd.date_range('2026-07-01', periods=2), 'cost': [368, 120], 'conversions': [0, 0], 'clicks': [45, 30], 'impressions': [9000, 5000], 'budget': [1000, 1000]}
-                    df_test = pd.DataFrame(test_data)
-                    st.session_state.scan_results = filter_hidden(analyze_campaigns(df_test), st.session_state.history)
-                    st.session_state.nav_screen = "choose_mode"
-                    st.rerun()
-                st.stop()
-
-# =========================
 # ЭКРАН 2: ВЫБОР РЕЖИМА
 # =========================
 elif st.session_state.nav_screen == "choose_mode":
