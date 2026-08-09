@@ -765,15 +765,15 @@ st.markdown("#### Подключите рекламный кабинет")
 col_y, col_g, col_m = st.columns(3)
 with col_y:
     st.markdown("**🔴 Яндекс.Директ**")
-    if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
-        if current_cabs < total_limit:
+    if current_cabs < total_limit:
+        if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
             st.session_state.connected_accounts.append({"platform": "yandex", "name": f"Яндекс #{current_cabs+1}", "date": datetime.now()})
             st.success("Яндекс подключён!")
             st.rerun()
-        else:
-            st.error(f"⚠️ Лимит превышен! Нужно докупить {unit_name}.")
-            if st.button("🛒 Докупить место или сменить тариф", key="btn_limit_open"):
-                st.session_state.show_limit_dialog = True
+    else:
+        st.error(f"⚠️ Лимит превышен! Нужно докупить {unit_name}.")
+        if st.button("🛒 Докупить место или сменить тариф", key="btn_limit_open"):
+            st.session_state.show_limit_dialog = True
 with col_g:
     st.markdown("**🔵 Google Ads**")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
