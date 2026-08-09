@@ -310,6 +310,31 @@ PRICES_EUR = {
 }
 RATES = {"€": 1, "$": 1.1, "₽": 100, "₸": 550}
 
+def make_invoice(tariff_key, amount_eur=None, note=""):
+    """Создаёт счёт, кладёт в архив и возвращает его."""
+    p = PRICES_EUR.get(tariff_key, {"price": 0, "extra": 0, "unit": "проект"})
+    amount = amount_eur if amount_eur is not None else p["price"]
+    num = f"INV-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    cur = st.session_state.get("user_currency", "€")
+    rate = RATES.get(cur, 1)
+    amount_cur = int(round(amount * rate, -1)) if cur in ("₽", "₸") else round(amount * rate)
+    t_name = TARIFFS[tariff_key]["name"] if tariff_key in TARIFFS else tariff_key
+    html = f"""<html><head><meta charset="utf-8"><title>Счёт {num}</title>
+<style>body{{font-family:Arial;padding:40px;color:#222}}h1{{font-size:20px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #999;padding:8px;text-align:left}}</style>
+</head><body>
+<h1>NAMECTUS — счёт на оплату</h1>
+<p>№ {num} от {datetime.now().strftime('%d.%m.%Y')}</p>
+<p>Клиент: {st.session_state.user_email}</p>
+<table><tr><th>Позиция</th><th>Цена</th></tr>
+<tr><td>{note or ('Тариф «' + t_name + '», подписка 30 дней')}</td><td>{amount} € ({amount_cur} {cur})</td></tr>
+</table>
+<p><b>Итого: {amount} € ({amount_cur} {cur})</b></p>
+<p>Продавец: NAMECTUS. Реквизиты для оплаты будут указаны после регистрации юрлица (ТОО Казахстан / самозанятость РФ).</p>
+<p>Оплата счёта означает согласие с условиями оферты (счёт-договор).</p>
+</body></html>"""
+    inv = {"num": num, "date": datetime.now().strftime("%d.%m.%Y"), "sum": f"{amount} €", "html": html}
+    st.session_state.invoices.append(inv)
+    return inv
 
 # 2. Инициализация переменных (Скелет мультивалютности и сессии)
 if "user_currency" not in st.session_state: st.session_state.user_currency = "RUB"
@@ -321,6 +346,7 @@ if "sub_end" not in st.session_state: st.session_state.sub_end = None
 if "connected_accounts" not in st.session_state: st.session_state.connected_accounts = []
 if "extra_accounts" not in st.session_state: st.session_state.extra_accounts = 0
 if "auth_passed" not in st.session_state: st.session_state.auth_passed = False
+if "invoices" not in st.session_state: st.session_state.invoices = []
 
 # Вспомогательные функции
 def get_total_limit():
@@ -581,6 +607,7 @@ if st.session_state.user_tariff is None:
         agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)", key="agree_terms_dlg")
         if agree:
             if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_dlg"):
+                make_invoice(k)
                 st.session_state.user_tariff = k
                 st.session_state.sub_end = datetime.now() + timedelta(days=30)
                 st.session_state.terms_tariff = None
@@ -601,6 +628,19 @@ if st.session_state.user_tariff is None:
 # ЭКРАН 3: ШАПКА РАБОЧЕГО ПРОСТРАНСТВА
 # =========================
 import math
+
+# БОКОВАЯ ПАНЕЛЬ: архив счетов
+with st.sidebar:
+    st.image("logo.png", width=60)
+    st.markdown("### 🧾 Мои счета")
+    if st.session_state.invoices:
+        for inv in reversed(st.session_state.invoices):
+            st.caption(f"{inv['num']} • {inv['date']} • {inv['sum']}")
+            st.download_button("⬇ Скачать", data=inv["html"], file_name=inv["num"] + ".html", mime="text/html", key=f"dl_{inv['num']}")
+    else:
+        st.caption("Счетов пока нет.")
+    st.markdown("### 📊 Архив сканирований")
+    st.caption("Появится следующим шагом.")
 
 def get_days_left():
     end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
@@ -741,34 +781,45 @@ with col_m:
     st.markdown("**🔷 Meta Ads**")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_m")
 
-# --- ОКНО ЛИМИТА: докупка или смена тарифа ---
+# --- ОКНО ЛИМИТА (самодостаточное) ---
 @st.dialog("🛒 Расширение возможностей")
 def show_limit_dialog():
+    PR = {
+        "trial":        {"price": 0,   "extra": 0,  "unit": "источник"},
+        "business":     {"price": 20,  "extra": 10, "unit": "источник"},
+        "agency_start": {"price": 50,  "extra": 5,  "unit": "проект"},
+        "agency":       {"price": 150, "extra": 5,  "unit": "проект"},
+        "agency_pro":   {"price": 300, "extra": 5,  "unit": "проект"},
+        "enterprise":   {"price": 500, "extra": 5,  "unit": "проект"},
+    }
     k = st.session_state.user_tariff
     t_name = "Пробный период" if k == "trial" else TARIFFS[k]["name"]
-    p = PRICES_EUR.get(k, PRICES_EUR["business"])
+    p = PR.get(k, PR["business"])
     extra = st.session_state.extra_accounts
     max_extra = TARIFFS[k]["max_extra"] if k in TARIFFS else None
+    unit_plural = "источники" if p["unit"] == "источник" else "проекты"
     can_buy = (k != "trial") and ((max_extra is None) or (extra < max_extra))
 
-    st.markdown(f"Тариф «{t_name}»: доступные {p['unit']}и закончились.")
+    st.markdown(f"Тариф «{t_name}»: доступные {unit_plural} закончились.")
 
     if can_buy:
         if st.button(f"➕ Купить ещё 1 {p['unit']} (+{p['extra']} €/мес)", use_container_width=True, key="dlg_buy_extra"):
+            make_invoice(k, amount_eur=p["extra"], note=f"Дополнительный {p['unit']}, +1 мес")
             st.session_state.extra_accounts += 1
             st.session_state.show_limit_dialog = False
             st.session_state.invoice_ready = True
             st.rerun()
         if max_extra is not None:
-            st.caption(f"Ваш тариф позволяет докупить не более {max_extra} {p['unit']}ов. Уже докуплено: {extra}.")
+            st.caption(f"Ваш тариф позволяет докупить не более {max_extra} {unit_plural}. Уже докуплено: {extra}.")
     else:
         st.caption("Докупка мест на этом тарифе недоступна — выберите тариф выше.")
 
     st.markdown("**Или перейти на другой тариф:**")
     keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
-    texts = [f"{TARIFFS[x]['name']} — {PRICES_EUR[x]['price']} €/мес" for x in keys]
+    texts = [f"{TARIFFS[x]['name']} — {PR[x]['price']} €/мес" for x in keys]
     choice = st.selectbox("Новый тариф", texts, key="dlg_new_tariff")
     if st.button("💳 Сформировать счёт на переход", type="primary", use_container_width=True, key="dlg_switch"):
+        make_invoice(keys[texts.index(choice)])
         st.session_state.user_tariff = keys[texts.index(choice)]
         st.session_state.sub_end = datetime.now() + timedelta(days=30)
         st.session_state.extra_accounts = 0
@@ -779,8 +830,10 @@ def show_limit_dialog():
 if st.session_state.get("show_limit_dialog"):
     show_limit_dialog()
 
-if st.session_state.get("invoice_ready"):
-    st.success("✅ Готово! Счёт сохранён в архив (кнопка скачивания появится следующим шагом).")
+if st.session_state.get("invoice_ready") and st.session_state.invoices:
+    inv = st.session_state.invoices[-1]
+    st.success(f"✅ Готово! Счёт {inv['num']} на {inv['sum']} сформирован и сохранён в архив.")
+    st.download_button("⬇ Скачать счёт", data=inv["html"], file_name=inv["num"] + ".html", mime="text/html", key="dl_last_invoice")
     st.session_state.invoice_ready = False
 
 st.divider()
