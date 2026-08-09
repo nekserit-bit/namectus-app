@@ -817,8 +817,8 @@ def show_limit_dialog():
     st.markdown("**Или перейти на другой тариф:**")
     keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
     texts = [f"{TARIFFS[x]['name']} — {PR[x]['price']} €/мес" for x in keys]
-    choice = st.selectbox("Новый тариф", texts, key="dlg_new_tariff")
-    if st.button("💳 Сформировать счёт на переход", type="primary", use_container_width=True, key="dlg_switch"):
+    choice = st.selectbox("Выбрать тариф", texts, key="dlg_new_tariff")
+    if st.button("💳 Сформировать счёт", type="primary", use_container_width=True, key="dlg_switch"):
         make_invoice(keys[texts.index(choice)])
         st.session_state.user_tariff = keys[texts.index(choice)]
         st.session_state.sub_end = datetime.now() + timedelta(days=30)
