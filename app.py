@@ -299,6 +299,18 @@ TARIFFS = {
     "enterprise": {"name": "Enterprise", "limit": 100, "price": 50000, "extra_price": 500, "max_extra": None}
 }
 
+# БАЗОВЫЕ ЦЕНЫ В ЕВРО (продуктовая константа, доступна всем экранам)
+PRICES_EUR = {
+    "trial":        {"price": 0,   "extra": 0,  "unit": "источник"},
+    "business":     {"price": 20,  "extra": 10, "unit": "источник"},
+    "agency_start": {"price": 50,  "extra": 5,  "unit": "проект"},
+    "agency":       {"price": 150, "extra": 5,  "unit": "проект"},
+    "agency_pro":   {"price": 300, "extra": 5,  "unit": "проект"},
+    "enterprise":   {"price": 500, "extra": 5,  "unit": "проект"},
+}
+RATES = {"€": 1, "$": 1.1, "₽": 100, "₸": 550}
+
+
 # 2. Инициализация переменных (Скелет мультивалютности и сессии)
 if "user_currency" not in st.session_state: st.session_state.user_currency = "RUB"
 if "user_language" not in st.session_state: st.session_state.user_language = "ru"
@@ -720,12 +732,56 @@ with col_y:
             st.rerun()
         else:
             st.error(f"⚠️ Лимит превышен! Нужно докупить {unit_name}.")
+            if st.button("🛒 Докупить место или сменить тариф", key="btn_limit_open"):
+                st.session_state.show_limit_dialog = True
 with col_g:
     st.markdown("**🔵 Google Ads**")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
 with col_m:
     st.markdown("**🔷 Meta Ads**")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_m")
+
+# --- ОКНО ЛИМИТА: докупка или смена тарифа ---
+@st.dialog("🛒 Расширение возможностей")
+def show_limit_dialog():
+    k = st.session_state.user_tariff
+    t_name = "Пробный период" if k == "trial" else TARIFFS[k]["name"]
+    p = PRICES_EUR.get(k, PRICES_EUR["business"])
+    extra = st.session_state.extra_accounts
+    max_extra = TARIFFS[k]["max_extra"] if k in TARIFFS else None
+    can_buy = (k != "trial") and ((max_extra is None) or (extra < max_extra))
+
+    st.markdown(f"Тариф «{t_name}»: доступные {p['unit']}и закончились.")
+
+    if can_buy:
+        if st.button(f"➕ Купить ещё 1 {p['unit']} (+{p['extra']} €/мес)", use_container_width=True, key="dlg_buy_extra"):
+            st.session_state.extra_accounts += 1
+            st.session_state.show_limit_dialog = False
+            st.session_state.invoice_ready = True
+            st.rerun()
+        if max_extra is not None:
+            st.caption(f"Ваш тариф позволяет докупить не более {max_extra} {p['unit']}ов. Уже докуплено: {extra}.")
+    else:
+        st.caption("Докупка мест на этом тарифе недоступна — выберите тариф выше.")
+
+    st.markdown("**Или перейти на другой тариф:**")
+    keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
+    texts = [f"{TARIFFS[x]['name']} — {PRICES_EUR[x]['price']} €/мес" for x in keys]
+    choice = st.selectbox("Новый тариф", texts, key="dlg_new_tariff")
+    if st.button("💳 Сформировать счёт на переход", type="primary", use_container_width=True, key="dlg_switch"):
+        st.session_state.user_tariff = keys[texts.index(choice)]
+        st.session_state.sub_end = datetime.now() + timedelta(days=30)
+        st.session_state.extra_accounts = 0
+        st.session_state.show_limit_dialog = False
+        st.session_state.invoice_ready = True
+        st.rerun()
+
+if st.session_state.get("show_limit_dialog"):
+    show_limit_dialog()
+
+if st.session_state.get("invoice_ready"):
+    st.success("✅ Готово! Счёт сохранён в архив (кнопка скачивания появится следующим шагом).")
+    st.session_state.invoice_ready = False
 
 st.divider()
 
