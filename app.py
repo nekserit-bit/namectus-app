@@ -553,29 +553,38 @@ if st.session_state.user_tariff is None:
         if st.button("Подключить тариф", use_container_width=True, key="btn_pick_tariff"):
             st.session_state.terms_tariff = chosen_key
 
-    # Условия, галочка и счёт
-    if st.session_state.get("terms_tariff"):
-        st.divider()
+    # --- Всплывающее окно с условиями тарифа ---
+    @st.dialog("📄 Условия тарифа")
+    def show_terms_dialog():
         k = st.session_state.terms_tariff
         info = TARIFFS[k]
         p = PRICES_EUR[k]
-        st.markdown(f"####  Условия тарифа «{info['name']}»")
+        st.markdown(f"### «{info['name']}»")
         st.markdown(f"""
 - Базовая цена: **{price(p['price'])}/мес** (фиксировано в евро: {p['price']} €)
 - Включено: **{info['limit']}** {p['unit']}
 - Дополнительная единица: **+{price(p['extra'])}/мес** за {p['unit']}{' (максимум ' + str(info['max_extra']) + ')' if info['max_extra'] else ' (без лимита)'}
 - Оплата: картой или по счёту для юрлиц. Подписка — 30 дней.
 """)
-        agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)", key="agree_terms")
+        agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)", key="agree_terms_dlg")
         if agree:
-            if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_tariff"):
+            if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_dlg"):
                 st.session_state.user_tariff = k
                 st.session_state.sub_end = datetime.now() + timedelta(days=30)
                 st.session_state.terms_tariff = None
-                st.success("Счёт сформирован (заглушка).")
+                st.session_state.invoice_ready = True
                 st.rerun()
 
+    # Показываем окошко, если выбран тариф
+    if st.session_state.get("terms_tariff"):
+        show_terms_dialog()
+
+    # Сообщение после активации
+    if st.session_state.get("invoice_ready"):
+        st.success("✅ Тариф активирован! Счёт сохранён в архив (кнопка скачивания появится следующим шагом).")
+
     st.stop()
+
 # =========================
 # ЭКРАН 3: ШАПКА РАБОЧЕГО ПРОСТРАНСТВА
 # =========================
