@@ -647,7 +647,14 @@ with st.sidebar:
                 st.session_state.invoice_ready = True
                 st.rerun()
         keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
-        texts = [f"{TARIFFS[x]['name']} — {PRICES_EUR[x]['price']} €/мес" for x in keys]
+        texts = []
+        for x in keys:
+            if x == "business":
+                texts.append(f"{TARIFFS[x]['name']} — {PRICES_EUR[x]['price']} €/мес — 1 источник")
+            elif x == "enterprise":
+                texts.append(f"{TARIFFS[x]['name']} — {PRICES_EUR[x]['price']} €/мес — от 100 проектов")
+            else:
+                texts.append(f"{TARIFFS[x]['name']} — {PRICES_EUR[x]['price']} €/мес — до {TARIFFS[x]['limit']} проектов")
         choice = st.selectbox("Выбрать тариф", texts, key="sb_tariff_choice")
         if st.button("💳 Сформировать счёт", use_container_width=True, key="sb_switch"):
             make_invoice(keys[texts.index(choice)])
@@ -837,14 +844,12 @@ st.markdown("#### Подключите рекламный кабинет")
 col_y, col_g, col_m = st.columns(3)
 with col_y:
     st.markdown("**🔴 Яндекс.Директ**")
-    if current_cabs < total_limit:
-        if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
+    if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
+        if current_cabs < total_limit:
             st.session_state.connected_accounts.append({"platform": "yandex", "name": f"Яндекс #{current_cabs+1}", "date": datetime.now()})
             st.success("Яндекс подключён!")
             st.rerun()
-    else:
-        st.error(f"⚠️ Лимит превышен! Нужно докупить {unit_name}.")
-        if st.button("🛒 Докупить место или сменить тариф", key="btn_limit_open"):
+        else:
             st.session_state.show_limit_dialog = True
 with col_g:
     st.markdown("**🔵 Google Ads**")
@@ -888,7 +893,14 @@ def show_limit_dialog():
 
     st.markdown("**Или перейти на другой тариф:**")
     keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
-    texts = [f"{TARIFFS[x]['name']} — {PR[x]['price']} €/мес" for x in keys]
+    texts = []
+    for x in keys:
+        if x == "business":
+            texts.append(f"{TARIFFS[x]['name']} — {PR[x]['price']} €/мес — 1 источник")
+        elif x == "enterprise":
+            texts.append(f"{TARIFFS[x]['name']} — {PR[x]['price']} €/мес — от 100 проектов")
+        else:
+            texts.append(f"{TARIFFS[x]['name']} — {PR[x]['price']} €/мес — до {TARIFFS[x]['limit']} проектов")
     choice = st.selectbox("Выбрать тариф", texts, key="dlg_new_tariff")
     if st.button("💳 Сформировать счёт", type="primary", use_container_width=True, key="dlg_switch"):
         make_invoice(keys[texts.index(choice)])
