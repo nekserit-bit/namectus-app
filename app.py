@@ -363,6 +363,7 @@ if "extra_accounts" not in st.session_state: st.session_state.extra_accounts = 0
 if "auth_passed" not in st.session_state: st.session_state.auth_passed = False
 if "invoices" not in st.session_state: st.session_state.invoices = []
 if "scan_archive" not in st.session_state: st.session_state.scan_archive = []
+if "projects" not in st.session_state: st.session_state.projects = []
 
 # Вспомогательные функции
 def get_total_limit():
