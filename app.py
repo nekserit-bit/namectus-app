@@ -633,7 +633,7 @@ import math
 with st.sidebar:
     st.image("logo.png", width=60)
 
-    # --- Тариф: продлить или сменить (доступно ВСЕГДА, не только у лимита) ---
+    # --- Тариф: продлить или сменить ---
     with st.expander("💎 Продлить или сменить тариф"):
         k = st.session_state.user_tariff
         t_name = "Пробный период" if k == "trial" else TARIFFS[k]["name"]
@@ -656,28 +656,49 @@ with st.sidebar:
             st.session_state.invoice_ready = True
             st.rerun()
 
-    # --- Мои счета: строки-кнопки вместо базара кнопок ---
-    st.markdown("### 🧾 Мои счета")
-    if st.session_state.invoices:
-        for inv in reversed(st.session_state.invoices):
-            if st.button(f"{inv['num']} • {inv['date']} • {inv['sum']}", use_container_width=True, key=f"inv_row_{inv['num']}"):
-                st.session_state.view_invoice = inv["num"]
+    # --- Мои счета: активные и оплаченные отдельно ---
+    with st.expander("🧾 Мои счета"):
+        pending = [i for i in st.session_state.invoices if i.get("status", "pending") == "pending"]
+        paid = [i for i in st.session_state.invoices if i.get("status") == "paid"]
+        
+        st.markdown("**Активные:**")
+        if pending:
+            for inv in reversed(pending):
+                if st.button(f"⏳ {inv['num']} • {inv['date']} • {inv['sum']}", use_container_width=True, key=f"inv_row_{inv['num']}"):
+                    st.session_state.view_invoice = inv["num"]
+        else:
+            st.caption("Нет активных счетов.")
+        
+        if paid:
+            st.divider()
+            st.markdown("**Оплаченные:**")
+            for inv in reversed(paid):
+                st.caption(f"✅ {inv['num']} • {inv['date']} • {inv['sum']}")
+        
         if st.session_state.get("view_invoice"):
             inv = next((i for i in st.session_state.invoices if i["num"] == st.session_state.view_invoice), None)
             if inv:
                 st.divider()
                 st.caption(f"Клиент: {st.session_state.user_email}")
                 st.caption(f"Итого: {inv['sum']}")
+                st.caption(f"Статус: Сформирован")
                 st.caption("Продавец: NAMECTUS (счёт-договор)")
-                st.download_button("⬇ Скачать", data=inv["html"], file_name=inv["num"] + ".html", mime="text/html", key="sb_dl_view")
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.download_button("⬇ Скачать", data=inv["html"], file_name=inv["num"] + ".html", mime="text/html", key="sb_dl_view")
+                with col2:
+                    if st.button("✓ Оплачен", key="mark_paid_view"):
+                        inv["status"] = "paid"
+                        st.session_state.view_invoice = None
+                        st.rerun()
                 if st.button("Закрыть просмотр", key="sb_close_view"):
                     st.session_state.view_invoice = None
                     st.rerun()
-    else:
-        st.caption("Счетов пока нет.")
 
-    st.markdown("### 📊 Архив сканирований")
-    st.caption("Появится после подключения реальных данных.")
+    # --- Архив сканирований ---
+    with st.expander("📊 Архив сканирований"):
+        st.caption("Здесь будут сохранённые отчёты по датам.")
+        st.info("Появится после подключения реальных данных из рекламных кабинетов.")
 
 def get_days_left():
     end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
