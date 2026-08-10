@@ -856,18 +856,64 @@ col_y, col_g, col_m = st.columns(3)
 with col_y:
     st.markdown("**🔴 Яндекс.Директ**")
     if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
-        if current_cabs < total_limit:
-            st.session_state.connected_accounts.append({"platform": "yandex", "name": f"Яндекс #{current_cabs+1}", "date": datetime.now()})
-            st.success("Яндекс подключён!")
-            st.rerun()
-        else:
+        if current_cabs >= total_limit:
             st.session_state.show_limit_dialog = True
+        else:
+            st.session_state.show_project_dialog = "yandex"
 with col_g:
     st.markdown("**🔵 Google Ads**")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
 with col_m:
     st.markdown("**🔷 Meta Ads**")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_m")
+
+# --- ОКНО ВЫБОРА ПРОЕКТА (универсальное для всех платформ) ---
+@st.dialog("📁 Подключение источника")
+def show_project_dialog():
+    platform = st.session_state.show_project_dialog
+    labels = {"yandex": "Яндекс.Директ", "google": "Google Ads", "meta": "Meta Ads"}
+    label = labels.get(platform, platform)
+    st.markdown(f"Подключаем **{label}**")
+    st.caption("Назовите проект, к которому будет привязан этот источник.")
+
+    if st.session_state.projects:
+        st.markdown("**Существующие проекты:**")
+        for p in st.session_state.projects:
+            if st.button(f"📂 {p['name']}", use_container_width=True, key=f"proj_pick_{p['name']}"):
+                st.session_state.connected_accounts.append({
+                    "platform": platform,
+                    "name": f"{label} • {p['name']}",
+                    "project": p["name"],
+                    "date": datetime.now()
+                })
+                st.session_state.show_project_dialog = False
+                st.session_state.source_ready = f"{label} подключён к проекту «{p['name']}»!"
+                st.rerun()
+        st.divider()
+
+    st.markdown("**Или создать новый проект:**")
+    new_name = st.text_input("Название проекта", placeholder="Например: Магазин цветов", key="new_project_name")
+    if st.button("➕ Создать и подключить", type="primary", use_container_width=True, key="btn_create_project"):
+        if not new_name.strip():
+            st.error("Введите название проекта.")
+        else:
+            st.session_state.projects.append({"name": new_name.strip(), "created": datetime.now()})
+            st.session_state.connected_accounts.append({
+                "platform": platform,
+                "name": f"{label} • {new_name.strip()}",
+                "project": new_name.strip(),
+                "date": datetime.now()
+            })
+            st.session_state.show_project_dialog = False
+            st.session_state.source_ready = f"Создан проект «{new_name.strip()}», {label} подключён!"
+            st.rerun()
+
+if st.session_state.get("show_project_dialog"):
+    show_project_dialog()
+
+if st.session_state.get("source_ready"):
+    st.success(st.session_state.source_ready)
+    st.session_state.source_ready = None
 
 # --- ОКНО ЛИМИТА (самодостаточное) ---
 @st.dialog("🛒 Расширение возможностей")
