@@ -677,6 +677,21 @@ with st.sidebar:
             st.session_state.invoice_ready = True
             st.rerun()
 
+    # --- Подключённые проекты (справочно, добавление — только с главного экрана) ---
+    with st.expander(f"📂 Подключённые проекты — {len(st.session_state.projects)}"):
+        if st.session_state.projects:
+            for p in sorted(st.session_state.projects, key=lambda x: x["name"]):
+                sources = [a for a in st.session_state.connected_accounts if a.get("project") == p["name"]]
+                with st.expander(f"{p['name']} • источников: {len(sources)}"):
+                    if sources:
+                        labels = {"yandex": "🔴 Яндекс.Директ", "google": "🔵 Google Ads", "meta": "🔷 Meta Ads"}
+                        for a in sources:
+                            st.caption(labels.get(a["platform"], a["platform"]))
+                    else:
+                        st.caption("Источники не подключены.")
+        else:
+            st.caption("Пока нет проектов.")
+
     with st.expander("🧾 Мои счета"):
         pending = [i for i in st.session_state.invoices if i.get("status", "pending") == "pending"]
         paid = [i for i in st.session_state.invoices if i.get("status") == "paid"]
@@ -913,8 +928,12 @@ if st.session_state.get("show_project_dialog"):
     show_project_dialog()
 
 if st.session_state.get("source_ready"):
-    st.success(st.session_state.source_ready)
+    msg = st.session_state.source_ready
     st.session_state.source_ready = None
+    components.html(f"""
+    <div id='okmsg' style='background:#14532d;color:#86efac;padding:10px 16px;border-radius:8px;font-size:14px;'>✅ {msg}</div>
+    <script>setTimeout(function(){{document.getElementById('okmsg').style.display='none';}},180000);</script>
+    """, height=60)
 
 # --- ОКНО ЛИМИТА (самодостаточное) ---
 @st.dialog("🛒 Расширение возможностей")
