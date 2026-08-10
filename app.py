@@ -629,18 +629,55 @@ if st.session_state.user_tariff is None:
 # =========================
 import math
 
-# БОКОВАЯ ПАНЕЛЬ: архив счетов
+# БОКОВАЯ ПАНЕЛЬ
 with st.sidebar:
     st.image("logo.png", width=60)
+
+    # --- Тариф: продлить или сменить (доступно ВСЕГДА, не только у лимита) ---
+    with st.expander("💎 Продлить или сменить тариф"):
+        k = st.session_state.user_tariff
+        t_name = "Пробный период" if k == "trial" else TARIFFS[k]["name"]
+        st.caption(f"Текущий: {t_name}")
+        p = PRICES_EUR.get(k, {"price": 0, "extra": 0, "unit": "проект"})
+        if k != "trial":
+            if st.button(f"🔄 Продлить (+{p['price']} €)", use_container_width=True, key="sb_renew"):
+                make_invoice(k)
+                st.session_state.sub_end = datetime.now() + timedelta(days=30)
+                st.session_state.invoice_ready = True
+                st.rerun()
+        keys = ["business", "agency_start", "agency", "agency_pro", "enterprise"]
+        texts = [f"{TARIFFS[x]['name']} — {PRICES_EUR[x]['price']} €/мес" for x in keys]
+        choice = st.selectbox("Выбрать тариф", texts, key="sb_tariff_choice")
+        if st.button("💳 Сформировать счёт", use_container_width=True, key="sb_switch"):
+            make_invoice(keys[texts.index(choice)])
+            st.session_state.user_tariff = keys[texts.index(choice)]
+            st.session_state.sub_end = datetime.now() + timedelta(days=30)
+            st.session_state.extra_accounts = 0
+            st.session_state.invoice_ready = True
+            st.rerun()
+
+    # --- Мои счета: строки-кнопки вместо базара кнопок ---
     st.markdown("### 🧾 Мои счета")
     if st.session_state.invoices:
         for inv in reversed(st.session_state.invoices):
-            st.caption(f"{inv['num']} • {inv['date']} • {inv['sum']}")
-            st.download_button("⬇ Скачать", data=inv["html"], file_name=inv["num"] + ".html", mime="text/html", key=f"dl_{inv['num']}")
+            if st.button(f"{inv['num']} • {inv['date']} • {inv['sum']}", use_container_width=True, key=f"inv_row_{inv['num']}"):
+                st.session_state.view_invoice = inv["num"]
+        if st.session_state.get("view_invoice"):
+            inv = next((i for i in st.session_state.invoices if i["num"] == st.session_state.view_invoice), None)
+            if inv:
+                st.divider()
+                st.caption(f"Клиент: {st.session_state.user_email}")
+                st.caption(f"Итого: {inv['sum']}")
+                st.caption("Продавец: NAMECTUS (счёт-договор)")
+                st.download_button("⬇ Скачать", data=inv["html"], file_name=inv["num"] + ".html", mime="text/html", key="sb_dl_view")
+                if st.button("Закрыть просмотр", key="sb_close_view"):
+                    st.session_state.view_invoice = None
+                    st.rerun()
     else:
         st.caption("Счетов пока нет.")
+
     st.markdown("### 📊 Архив сканирований")
-    st.caption("Появится следующим шагом.")
+    st.caption("Появится после подключения реальных данных.")
 
 def get_days_left():
     end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
