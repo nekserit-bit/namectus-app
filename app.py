@@ -347,6 +347,7 @@ if "connected_accounts" not in st.session_state: st.session_state.connected_acco
 if "extra_accounts" not in st.session_state: st.session_state.extra_accounts = 0
 if "auth_passed" not in st.session_state: st.session_state.auth_passed = False
 if "invoices" not in st.session_state: st.session_state.invoices = []
+if "scan_archive" not in st.session_state: st.session_state.scan_archive = []
 
 # Вспомогательные функции
 def get_total_limit():
@@ -695,11 +696,24 @@ with st.sidebar:
                     st.session_state.view_invoice = None
                     st.rerun()
 
-    # --- Архив сканирований ---
+    # --- Архив сканирований: год → месяц → дата ---
     with st.expander("📊 Архив сканирований"):
-        st.caption("Здесь будут сохранённые отчёты по датам.")
-        st.info("Появится после подключения реальных данных из рекламных кабинетов.")
-
+        archive = st.session_state.scan_archive
+        if archive:
+            years = sorted(set(r["date"].year for r in archive), reverse=True)
+            for year in years:
+                with st.expander(f"📅 {year}"):
+                    months_in_year = sorted(set(r["date"].month for r in archive if r["date"].year == year), reverse=True)
+                    for month in months_in_year:
+                        month_name = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"][month-1]
+                        with st.expander(f"{month_name} {year}"):
+                            reports = [r for r in archive if r["date"].year == year and r["date"].month == month]
+                            for r in sorted(reports, key=lambda x: x["date"], reverse=True):
+                                if st.button(f"📄 {r['date'].strftime('%d.%m.%Y')}", use_container_width=True, key=f"scan_row_{r['date'].strftime('%Y%m%d')}"):
+                                    st.session_state.view_scan = r["date"].strftime("%Y%m%d")
+        else:
+            st.caption("Здесь будут сохранённые отчёты.")
+            st.info("Появится после подключения реальных данных.")
 def get_days_left():
     end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
     if not end_date: return 0
