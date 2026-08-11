@@ -698,7 +698,8 @@ if st.session_state.user_tariff is None:
 import math
 # Авто-загрузка хозяйства из базы (один раз за сессию)
 if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
-    db_load_all(st.session_state.user_email)
+    if not st.session_state.invoices and not st.session_state.projects:
+        db_load_all(st.session_state.user_email)
     st.session_state.db_loaded = True
 
 # БОКОВАЯ ПАНЕЛЬ
