@@ -7,10 +7,6 @@ import requests
 from dotenv import load_dotenv
 import streamlit.components.v1 as components
 import math
-# Авто-загрузка хозяйства из базы (один раз за сессию)
-if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
-    db_load_all(st.session_state.user_email)
-    st.session_state.db_loaded = True
 
 # =========================
 # ПАМЯТЬ: SUPABASE
@@ -700,6 +696,10 @@ if st.session_state.user_tariff is None:
 # ЭКРАН 3: ШАПКА РАБОЧЕГО ПРОСТРАНСТВА
 # =========================
 import math
+# Авто-загрузка хозяйства из базы (один раз за сессию)
+if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
+    db_load_all(st.session_state.user_email)
+    st.session_state.db_loaded = True
 
 # БОКОВАЯ ПАНЕЛЬ
 with st.sidebar:
