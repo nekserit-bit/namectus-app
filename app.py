@@ -835,7 +835,10 @@ if "code" in query_params and "yandex_token" not in st.session_state:
 
 st.divider()
 
-current_cabs = len(st.session_state.connected_accounts)
+if st.session_state.user_tariff in ["trial", "business"]:
+    current_cabs = len(st.session_state.connected_accounts)
+else:
+    current_cabs = len(st.session_state.projects)
 total_limit = get_total_limit()
 if st.session_state.user_tariff in ["trial", "business"]:
     unit_name = "источник"
@@ -913,15 +916,18 @@ def show_project_dialog():
         if not new_name.strip():
             st.error("Введите название проекта.")
         else:
-            st.session_state.projects.append({"name": new_name.strip(), "created": datetime.now()})
+            existing = next((p for p in st.session_state.projects if p["name"].lower() == new_name.strip().lower()), None)
+            project_name = existing["name"] if existing else new_name.strip()
+            if existing is None:
+                st.session_state.projects.append({"name": project_name, "created": datetime.now()})
             st.session_state.connected_accounts.append({
                 "platform": platform,
-                "name": f"{label} • {new_name.strip()}",
-                "project": new_name.strip(),
+                "name": f"{label} • {project_name}",
+                "project": project_name,
                 "date": datetime.now()
             })
             st.session_state.show_project_dialog = False
-            st.session_state.source_ready = f"Создан проект «{new_name.strip()}», {label} подключён!"
+            st.session_state.source_ready = f"{label} подключён к проекту «{project_name}»!"
             st.rerun()
 
 if st.session_state.get("show_project_dialog"):
