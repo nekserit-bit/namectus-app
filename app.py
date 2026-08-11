@@ -928,10 +928,14 @@ st.divider()
 # 2. ПОТОМ: подключение кабинетов (названия — обычным текстом)
 st.markdown("#### Подключите рекламный кабинет")
 col_y, col_g, col_m = st.columns(3)
+paid_active = st.session_state.user_tariff == "trial" or any(i.get("status") == "paid" for i in st.session_state.invoices)
+
 with col_y:
     st.markdown("**🔴 Яндекс.Директ**")
     if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
-        if current_cabs >= total_limit:
+        if not paid_active:
+            st.error("💳 Сначала оплатите счёт — после этого откроются подключение кабинетов и проекты.")
+        elif current_cabs >= total_limit:
             st.session_state.show_limit_dialog = True
         else:
             st.session_state.show_project_dialog = "yandex"
