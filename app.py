@@ -7,6 +7,61 @@ import requests
 from dotenv import load_dotenv
 import streamlit.components.v1 as components
 import math
+# Авто-загрузка хозяйства из базы (один раз за сессию)
+if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
+    db_load_all(st.session_state.user_email)
+    st.session_state.db_loaded = True
+
+# =========================
+# ПАМЯТЬ: SUPABASE
+# =========================
+from supabase import create_client
+
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+sb = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
+def db_load_all(email):
+    """Загружает всё хозяйство пользователя из базы."""
+    if not sb: return
+    u = sb.table("users").select("*").eq("email", email).execute()
+    if u.data:
+        r = u.data[0]
+        st.session_state.user_tariff = r.get("tariff") or "trial"
+        st.session_state.sub_end = datetime.fromisoformat(r["sub_end"]) if r.get("sub_end") else None
+        st.session_state.trial_end = datetime.fromisoformat(r["trial_end"]) if r.get("trial_end") else None
+        st.session_state.extra_accounts = r.get("extra_accounts") or 0
+        st.session_state.user_currency = r.get("currency") or "€"
+    p = sb.table("projects").select("*").eq("email", email).execute()
+    st.session_state.projects = [{"name": x["name"], "created": datetime.now()} for x in p.data]
+    a = sb.table("accounts").select("*").eq("email", email).execute()
+    st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "date": datetime.now()} for x in a.data]
+    i = sb.table("invoices").select("*").eq("email", email).execute()
+    st.session_state.invoices = [{"num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data") or {}, "html": x["html"]} for x in i.data]
+
+def db_sync_all():
+    """Сохраняет всё хозяйство пользователя в базу."""
+    if not sb or not st.session_state.get("auth_passed") or not st.session_state.get("user_email"):
+        return
+    email = st.session_state.user_email
+    sb.table("users").upsert({
+        "email": email,
+        "password": st.session_state.get("user_password", ""),
+        "tariff": st.session_state.get("user_tariff") or "trial",
+        "sub_end": st.session_state.get("sub_end").isoformat() if st.session_state.get("sub_end") else None,
+        "trial_end": st.session_state.get("trial_end").isoformat() if st.session_state.get("trial_end") else None,
+        "extra_accounts": st.session_state.get("extra_accounts") or 0,
+        "currency": st.session_state.get("user_currency") or "€",
+    }).execute()
+    sb.table("projects").delete().eq("email", email).execute()
+    if st.session_state.projects:
+        sb.table("projects").insert([{"email": email, "name": x["name"]} for x in st.session_state.projects]).execute()
+    sb.table("accounts").delete().eq("email", email).execute()
+    if st.session_state.connected_accounts:
+        sb.table("accounts").insert([{"email": email, "platform": x["platform"], "name": x["name"], "project": x.get("project", "")} for x in st.session_state.connected_accounts]).execute()
+    sb.table("invoices").delete().eq("email", email).execute()
+    if st.session_state.invoices:
+        sb.table("invoices").insert([{"email": email, "num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data", {}), "html": x["html"]} for x in st.session_state.invoices]).execute()
 
 # =========================
 # БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
@@ -1011,6 +1066,8 @@ st.divider()
 # 3. В КОНЦЕ: справочная информация
 st.markdown(f"Подключено {unit_name}ов: {current_cabs} из {total_limit}")
 st.progress(min(current_cabs / total_limit, 1.0) if total_limit > 0 else 0)
+# Сохраняем всё в базу при каждом действии
+db_sync_all()
 
 # =========================
 # ЭКРАН 2: ВЫБОР РЕЖИМА
