@@ -58,6 +58,13 @@ def db_sync_all():
     sb.table("invoices").delete().eq("email", email).execute()
     if st.session_state.invoices:
         sb.table("invoices").insert([{"email": email, "num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data", {}), "html": x["html"]} for x in st.session_state.invoices]).execute()
+def db_log(email, action, details=""):
+    """Пишет событие в журнал действий."""
+    if not sb: return
+    try:
+        sb.table("logs").insert({"email": email, "action": action, "details": details}).execute()
+    except Exception:
+        pass
 
 # =========================
 # БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
@@ -386,6 +393,7 @@ def make_invoice(tariff_key, amount_eur=None, note="", action=None, action_data=
     inv = {"num": num, "date": datetime.now().strftime("%d.%m.%Y"), "sum": f"{amount} €",
            "html": html, "status": "pending", "action": action, "action_data": action_data or {}}
     st.session_state.invoices.append(inv)
+    db_log(st.session_state.user_email, "Счёт сформирован", f"{num} на {amount} €")
     return inv
 
 def apply_invoice(inv):
@@ -914,6 +922,7 @@ if current_cabs > 0:
                     st.warning("Нет данных")
                 else:
                     st.session_state.scan_results = results
+                    db_log(st.session_state.user_email, "Сканирование", f"найдено результатов: {len(results)}")
                     st.session_state.nav_screen = "choose_mode"
                     st.rerun()
             except Exception as e:
@@ -934,7 +943,7 @@ with col_y:
     st.markdown("**🔴 Яндекс.Директ**")
     if st.button("Подключить Яндекс", use_container_width=True, key="btn_yandex"):
         if not paid_active:
-            st.error("💳 Сначала оплатите счёт — после этого откроются подключение кабинетов и проекты.")
+            st.error("💳 Оплатите счёт, после чего подключайте кабинеты и проекты.")
         elif current_cabs >= total_limit:
             st.session_state.show_limit_dialog = True
         else:
@@ -988,6 +997,7 @@ def show_project_dialog():
             })
             st.session_state.show_project_dialog = False
             st.session_state.source_ready = f"{label} подключён к проекту «{project_name}»!"
+            db_log(st.session_state.user_email, "Подключён кабинет", f"{label} → {project_name}")
             st.rerun()
 
 if st.session_state.get("show_project_dialog"):
