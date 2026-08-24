@@ -24,8 +24,15 @@ def db_load_all(email):
     if u.data:
         r = u.data[0]
         st.session_state.user_tariff = r.get("tariff") or "trial"
-        st.session_state.sub_end = datetime.fromisoformat(r["sub_end"]) if r.get("sub_end") else None
-        st.session_state.trial_end = datetime.fromisoformat(r["trial_end"]) if r.get("trial_end") else None
+        def _safe_parse(s):
+            if not s: return None
+            try:
+                return datetime.fromisoformat(s.replace('Z', '+00:00'))
+            except Exception:
+                return None
+
+        st.session_state.sub_end = _safe_parse(r.get("sub_end"))
+        st.session_state.trial_end = _safe_parse(r.get("trial_end"))
         st.session_state.extra_accounts = r.get("extra_accounts") or 0
         st.session_state.user_currency = r.get("currency") or "€"
     p = sb.table("projects").select("*").eq("email", email).execute()
@@ -112,9 +119,38 @@ def get_total_limit():
     return TARIFFS[st.session_state.user_tariff]["limit"] + st.session_state.extra_accounts
 
 def get_days_left():
-    end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
-    if not end_date: return 0
-    return max(0, (end_date - datetime.now()).days)
+    """Считает, сколько дней осталось по тарифу."""
+    tariff = st.session_state.get("user_tariff", "trial")
+    end_date = None
+    
+    if tariff == "trial":
+        end_date = st.session_state.get("trial_end")
+    else:
+        end_date = st.session_state.get("sub_end")
+    
+    if end_date is None:
+        # Первый вход — нет даты окончания, даём 7 дней триала
+        st.session_state.trial_end = datetime.now() + timedelta(days=7)
+        return 7
+    
+    # Приводим к aware datetime (UTC) для корректного сравнения
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    
+    if hasattr(end_date, 'tzinfo') and end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+    elif not hasattr(end_date, 'tzinfo'):
+        # Если это строка — парсим
+        try:
+            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except Exception:
+            return 0
+    
+    if end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+    
+    delta = end_date - now
+    return max(0, delta.days)
 
 # =========================
 # УПРАВЛЕНИЕ ПРОЕКТАМИ (КАТАЛОГ)
