@@ -473,11 +473,6 @@ def get_total_limit():
     if not st.session_state.user_tariff: return 0
     return TARIFFS[st.session_state.user_tariff]["limit"] + st.session_state.extra_accounts
 
-def get_days_left():
-    end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
-    if not end_date: return 0
-    return max(0, (end_date - datetime.now()).days)
-
 # =========================
 # ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + НОВАЯ РЕГИСТРАЦИЯ + ПРОВЕРКА ПАРОЛЯ)
 # =========================
@@ -751,20 +746,6 @@ import math
 if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
     if not st.session_state.invoices and not st.session_state.projects:
         db_load_all(st.session_state.user_email)
-    st.session_state.db_loaded = True
-            st.session_state.user_tariff = r.get("tariff") or "trial"
-            st.session_state.sub_end = _safe_parse(r.get("sub_end"))
-            st.session_state.trial_end = _safe_parse(r.get("trial_end"))
-            st.session_state.extra_accounts = r.get("extra_accounts") or 0
-            st.session_state.user_currency = r.get("currency") or "€"
-        p = sb.table("projects").select("*").eq("email", email).execute()
-        st.session_state.projects = [{"name": x["name"], "created": datetime.now()} for x in p.data]
-        a = sb.table("accounts").select("*").eq("email", email).execute()
-        st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "date": datetime.now()} for x in a.data]
-        i = sb.table("invoices").select("*").eq("email", email).execute()
-        st.session_state.invoices = [{"num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data") or {}, "html": x["html"]} for x in i.data]
-    except Exception as e:
-        print(f"Ошибка загрузки из базы: {e}")
     st.session_state.db_loaded = True
 
 # БОКОВАЯ ПАНЕЛЬ
