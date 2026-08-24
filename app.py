@@ -17,54 +17,61 @@ SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 sb = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
+def _safe_parse(s):
+    if not s: return None
+    try:
+        return datetime.fromisoformat(s.replace('Z', '+00:00'))
+    except Exception:
+        return None
+
 def db_load_all(email):
     """Загружает всё хозяйство пользователя из базы."""
     if not sb: return
-    u = sb.table("users").select("*").eq("email", email).execute()
-    if u.data:
-        r = u.data[0]
-        st.session_state.user_tariff = r.get("tariff") or "trial"
-        def _safe_parse(s):
-            if not s: return None
-            try:
-                return datetime.fromisoformat(s.replace('Z', '+00:00'))
-            except Exception:
-                return None
-
-        st.session_state.sub_end = _safe_parse(r.get("sub_end"))
-        st.session_state.trial_end = _safe_parse(r.get("trial_end"))
-        st.session_state.extra_accounts = r.get("extra_accounts") or 0
-        st.session_state.user_currency = r.get("currency") or "€"
-    p = sb.table("projects").select("*").eq("email", email).execute()
-    st.session_state.projects = [{"name": x["name"], "created": datetime.now()} for x in p.data]
-    a = sb.table("accounts").select("*").eq("email", email).execute()
-    st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "date": datetime.now()} for x in a.data]
-    i = sb.table("invoices").select("*").eq("email", email).execute()
-    st.session_state.invoices = [{"num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data") or {}, "html": x["html"]} for x in i.data]
+    try:
+        u = sb.table("users").select("*").eq("email", email).execute()
+        if u.data:
+            r = u.data[0]
+            st.session_state.user_tariff = r.get("tariff") or "trial"
+            st.session_state.sub_end = _safe_parse(r.get("sub_end"))
+            st.session_state.trial_end = _safe_parse(r.get("trial_end"))
+            st.session_state.extra_accounts = r.get("extra_accounts") or 0
+            st.session_state.user_currency = r.get("currency") or "€"
+        p = sb.table("projects").select("*").eq("email", email).execute()
+        st.session_state.projects = [{"name": x["name"], "created": datetime.now()} for x in p.data]
+        a = sb.table("accounts").select("*").eq("email", email).execute()
+        st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "date": datetime.now()} for x in a.data]
+        i = sb.table("invoices").select("*").eq("email", email).execute()
+        st.session_state.invoices = [{"num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data") or {}, "html": x["html"]} for x in i.data]
+    except Exception as e:
+        print(f"Ошибка загрузки из базы: {e}")
 
 def db_sync_all():
     """Сохраняет всё хозяйство пользователя в базу."""
     if not sb or not st.session_state.get("auth_passed") or not st.session_state.get("user_email"):
         return
-    email = st.session_state.user_email
-    sb.table("users").upsert({
-        "email": email,
-        "password": st.session_state.get("user_password", ""),
-        "tariff": st.session_state.get("user_tariff") or "trial",
-        "sub_end": st.session_state.get("sub_end").isoformat() if st.session_state.get("sub_end") else None,
-        "trial_end": st.session_state.get("trial_end").isoformat() if st.session_state.get("trial_end") else None,
-        "extra_accounts": st.session_state.get("extra_accounts") or 0,
-        "currency": st.session_state.get("user_currency") or "€",
-    }).execute()
-    sb.table("projects").delete().eq("email", email).execute()
-    if st.session_state.projects:
-        sb.table("projects").insert([{"email": email, "name": x["name"]} for x in st.session_state.projects]).execute()
-    sb.table("accounts").delete().eq("email", email).execute()
-    if st.session_state.connected_accounts:
-        sb.table("accounts").insert([{"email": email, "platform": x["platform"], "name": x["name"], "project": x.get("project", "")} for x in st.session_state.connected_accounts]).execute()
-    sb.table("invoices").delete().eq("email", email).execute()
-    if st.session_state.invoices:
-        sb.table("invoices").insert([{"email": email, "num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data", {}), "html": x["html"]} for x in st.session_state.invoices]).execute()
+    try:
+        email = st.session_state.user_email
+        sb.table("users").upsert({
+            "email": email,
+            "password": st.session_state.get("user_password", ""),
+            "tariff": st.session_state.get("user_tariff") or "trial",
+            "sub_end": st.session_state.get("sub_end").isoformat() if st.session_state.get("sub_end") else None,
+            "trial_end": st.session_state.get("trial_end").isoformat() if st.session_state.get("trial_end") else None,
+            "extra_accounts": st.session_state.get("extra_accounts") or 0,
+            "currency": st.session_state.get("user_currency") or "€",
+        }).execute()
+        sb.table("projects").delete().eq("email", email).execute()
+        if st.session_state.projects:
+            sb.table("projects").insert([{"email": email, "name": x["name"]} for x in st.session_state.projects]).execute()
+        sb.table("accounts").delete().eq("email", email).execute()
+        if st.session_state.connected_accounts:
+            sb.table("accounts").insert([{"email": email, "platform": x["platform"], "name": x["name"], "project": x.get("project", "")} for x in st.session_state.connected_accounts]).execute()
+        sb.table("invoices").delete().eq("email", email).execute()
+        if st.session_state.invoices:
+            sb.table("invoices").insert([{"email": email, "num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data", {}), "html": x["html"]} for x in st.session_state.invoices]).execute()
+    except Exception as e:
+        print(f"Ошибка сохранения в базу: {e}")
+
 def db_log(email, action, details=""):
     """Пишет событие в журнал действий."""
     if not sb: return
@@ -744,6 +751,20 @@ import math
 if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
     if not st.session_state.invoices and not st.session_state.projects:
         db_load_all(st.session_state.user_email)
+    st.session_state.db_loaded = True
+            st.session_state.user_tariff = r.get("tariff") or "trial"
+            st.session_state.sub_end = _safe_parse(r.get("sub_end"))
+            st.session_state.trial_end = _safe_parse(r.get("trial_end"))
+            st.session_state.extra_accounts = r.get("extra_accounts") or 0
+            st.session_state.user_currency = r.get("currency") or "€"
+        p = sb.table("projects").select("*").eq("email", email).execute()
+        st.session_state.projects = [{"name": x["name"], "created": datetime.now()} for x in p.data]
+        a = sb.table("accounts").select("*").eq("email", email).execute()
+        st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "date": datetime.now()} for x in a.data]
+        i = sb.table("invoices").select("*").eq("email", email).execute()
+        st.session_state.invoices = [{"num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data") or {}, "html": x["html"]} for x in i.data]
+    except Exception as e:
+        print(f"Ошибка загрузки из базы: {e}")
     st.session_state.db_loaded = True
 
 # БОКОВАЯ ПАНЕЛЬ
