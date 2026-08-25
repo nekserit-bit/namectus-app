@@ -49,7 +49,7 @@ def db_load_all(email):
         p = sb.table("projects").select("*").eq("email", email).execute()
         st.session_state.projects = [{"name": x["name"], "created": datetime.now()} for x in p.data]
         a = sb.table("accounts").select("*").eq("email", email).execute()
-        st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "date": datetime.now()} for x in a.data]
+        st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "login": x.get("login", ""), "date": datetime.now()} for x in a.data]
         i = sb.table("invoices").select("*").eq("email", email).execute()
         st.session_state.invoices = [{"num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data") or {}, "html": x["html"]} for x in i.data]
     except Exception as e:
@@ -75,7 +75,7 @@ def db_sync_all():
             sb.table("projects").insert([{"email": email, "name": x["name"]} for x in st.session_state.projects]).execute()
         sb.table("accounts").delete().eq("email", email).execute()
         if st.session_state.connected_accounts:
-            sb.table("accounts").insert([{"email": email, "platform": x["platform"], "name": x["name"], "project": x.get("project", "")} for x in st.session_state.connected_accounts]).execute()
+            sb.table("accounts").insert([{"email": email, "platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "login": x.get("login", "")} for x in st.session_state.connected_accounts]).execute()
         sb.table("invoices").delete().eq("email", email).execute()
         if st.session_state.invoices:
             sb.table("invoices").insert([{"email": email, "num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data", {}), "html": x["html"]} for x in st.session_state.invoices]).execute()
@@ -237,6 +237,30 @@ def get_yandex_auth_url():
             f"&client_id={YANDEX_CLIENT_ID}"
             f"&redirect_uri={YANDEX_REDIRECT_URI}"
             f"&state={state}")
+
+def get_yandex_accounts():
+    """Список доступных рекламных кабинетов Яндекса (для агентства — все клиенты)."""
+    token = st.session_state.get("yandex_token")
+    if not token:
+        return []
+    try:
+        r = requests.post(
+            "https://api.direct.yandex.ru/json/v5/clients",
+            headers={"Authorization": f"Bearer {token}", "Accept-Language": "ru"},
+            json={"method": "get", "params": {"SelectionCriteria": {}}}
+        )
+        clients = r.json().get("result", {}).get("clients", [])
+        accounts = []
+        for c in clients:
+            sub = c.get("logins") or []
+            if sub:
+                for s in sub:
+                    accounts.append({"login": s, "name": s})
+            else:
+                accounts.append({"login": c.get("login", ""), "name": c.get("name", "") or c.get("login", "")})
+        return accounts
+    except Exception:
+        return []
 
 # =========================
 # АНАЛИЗ КАМПАНИЙ
@@ -503,6 +527,27 @@ if "code" in query_params and "yandex_token" not in st.session_state:
             st.session_state.auth_passed = True
         st.query_params.clear()
         st.rerun()
+
+# =========================
+# ОБРАБОТКА ВОЗВРАТА С ЯНДЕКСА (до экрана входа!)
+# =========================
+query_params = st.query_params
+if "code" in query_params and "yandex_token" not in st.session_state:
+    token = exchange_code_for_token(query_params["code"])
+    if token:
+        st.session_state["yandex_token"] = token
+        st.session_state.oauth_ok = True
+        returned_email = query_params.get("state", "")
+        if returned_email:
+            st.session_state.user_email = returned_email
+            st.session_state.auth_passed = True
+        st.query_params.clear()
+        st.rerun()
+
+# Авто-загрузка хозяйства вернувшегося пользователя из базы
+if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
+    db_load_all(st.session_state.user_email)
+    st.session_state.db_loaded = True
 
 # =========================
 # ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + НОВАЯ РЕГИСТРАЦИЯ + ПРОВЕРКА ПАРОЛЯ)
@@ -999,7 +1044,7 @@ with col_y:
         elif not st.session_state.get("yandex_token"):
             st.session_state.ask_yandex_login = True
         else:
-            st.session_state.show_project_dialog = "yandex"
+            st.session_state.show_yandex_dialog = True
     if st.session_state.get("ask_yandex_login"):
         st.markdown(f'<a href="{get_yandex_auth_url()}" style="color:#90caf9;font-weight:bold;">🔐 Войти в Яндекс.Директ и разрешить доступ (только чтение)</a>', unsafe_allow_html=True)
     if st.session_state.get("oauth_ok"):
@@ -1059,6 +1104,61 @@ def show_project_dialog():
 
 if st.session_state.get("show_project_dialog"):
     show_project_dialog()
+
+# --- ОКНО ВЫБОРА КАБИНЕТОВ ЯНДЕКСА (реальные данные из API) ---
+@st.dialog("🔴 Подключение Яндекс.Директ")
+def show_yandex_dialog():
+    st.caption("Шаг 1. Отметьте кабинеты, которые подключаем.")
+    if "ya_accounts" not in st.session_state:
+        with st.spinner("Получаем список кабинетов из Яндекса..."):
+            st.session_state.ya_accounts = get_yandex_accounts()
+    accounts = st.session_state.ya_accounts
+    if not accounts:
+        st.warning("Яндекс не отдал список кабинетов. Проверьте, что в приложении на oauth.yandex.ru включено право «Яндекс.Директ API».")
+        return
+    options = {}
+    for a in accounts:
+        options[f"{a['login']} — {a['name']}"] = a
+    picked = st.multiselect("Кабинеты", list(options.keys()))
+    st.caption("Шаг 2. В какой проект положить выбранные кабинеты?")
+    if st.session_state.projects:
+        mode = st.radio("Проект", ["Создать новый", "Выбрать существующий"], horizontal=True)
+        if mode == "Выбрать существующий":
+            project_name = st.selectbox("Существующий проект", [p["name"] for p in st.session_state.projects])
+        else:
+            project_name = st.text_input("Название нового проекта", placeholder="Например: Магазин цветов")
+    else:
+        project_name = st.text_input("Название проекта", placeholder="Например: Магазин цветов")
+    if st.button("✅ Подключить выбранные", type="primary", use_container_width=True):
+        if not picked:
+            st.error("Выберите хотя бы один кабинет.")
+            return
+        if not project_name or not project_name.strip():
+            st.error("Введите название проекта.")
+            return
+        room = total_limit - current_cabs
+        if len(picked) > room:
+            st.error(f"Тариф позволяет добавить ещё {room}, а выбрано {len(picked)}. Снимите лишние или расширьте тариф.")
+            return
+        pname = project_name.strip()
+        if not any(p["name"] == pname for p in st.session_state.projects):
+            st.session_state.projects.append({"name": pname, "created": datetime.now()})
+        for key in picked:
+            a = options[key]
+            st.session_state.connected_accounts.append({
+                "platform": "yandex",
+                "name": f"Яндекс.Директ • {a['login']}",
+                "project": pname,
+                "login": a["login"],
+                "date": datetime.now()
+            })
+        st.session_state.show_yandex_dialog = False
+        st.session_state.source_ready = f"Подключено кабинетов: {len(picked)} → проект «{pname}»!"
+        db_log(st.session_state.user_email, "Подключены кабинеты", f"{len(picked)} → {pname}")
+        st.rerun()
+
+if st.session_state.get("show_yandex_dialog"):
+    show_yandex_dialog()
 
 if st.session_state.get("source_ready"):
     msg = st.session_state.source_ready
