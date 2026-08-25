@@ -1061,7 +1061,7 @@ with col_y:
         st.markdown(f'<a href="{get_yandex_auth_url()}" style="color:#90caf9;font-weight:bold;">🔐 Войти в Яндекс.Директ и разрешить доступ (только чтение)</a>', unsafe_allow_html=True)
     if st.session_state.get("oauth_ok"):
         st.session_state.oauth_ok = False
-        st.success("✅ Доступ получен! Нажми «Подключить Яндекс» ещё раз.")
+        st.session_state.show_yandex_dialog = True
 with col_g:
     st.markdown("**🔵 Google Ads**")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
