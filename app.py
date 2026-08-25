@@ -243,6 +243,7 @@ def get_yandex_accounts():
     """Список доступных рекламных кабинетов Яндекса (для агентства — все клиенты)."""
     token = st.session_state.get("yandex_token")
     if not token:
+        st.session_state.ya_error = "Токена доступа нет."
         return []
     try:
         r = requests.post(
@@ -250,7 +251,12 @@ def get_yandex_accounts():
             headers={"Authorization": f"Bearer {token}", "Accept-Language": "ru"},
             json={"method": "get", "params": {"SelectionCriteria": {}}}
         )
-        clients = r.json().get("result", {}).get("clients", [])
+        data = r.json()
+        if "error" in data:
+            st.session_state.ya_error = f"Яндекс говорит: {data.get('error')} / {data.get('error_description', '')}"
+            return []
+        st.session_state.ya_error = ""
+        clients = data.get("result", {}).get("clients", [])
         accounts = []
         for c in clients:
             sub = c.get("logins") or []
@@ -260,7 +266,8 @@ def get_yandex_accounts():
             else:
                 accounts.append({"login": c.get("login", ""), "name": c.get("name", "") or c.get("login", "")})
         return accounts
-    except Exception:
+    except Exception as e:
+        st.session_state.ya_error = f"Запрос не удался: {e}"
         return []
 
 # =========================
@@ -1125,10 +1132,10 @@ def show_yandex_dialog():
         with st.spinner("Получаем список кабинетов из Яндекса..."):
             st.session_state.ya_accounts = get_yandex_accounts()
     accounts = st.session_state.ya_accounts
-    if not accounts:
-        st.warning("Яндекс не отдал список кабинетов. Проверьте, что в приложении на oauth.yandex.ru включено право «Яндекс.Директ API».")
+        if not accounts:
+        err = st.session_state.get("ya_error", "")
+        st.warning(f"Яндекс не отдал список кабинетов. {err or 'Проверьте, что в приложении на oauth.yandex.ru включено право «Яндекс.Директ API».'}")
         return
-    options = {}
     for a in accounts:
         options[f"{a['login']} — {a['name']}"] = a
     picked = st.multiselect("Кабинеты", list(options.keys()))
