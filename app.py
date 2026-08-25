@@ -136,19 +136,20 @@ def get_total_limit():
     return TARIFFS[st.session_state.user_tariff]["limit"] + st.session_state.extra_accounts
 
 def get_days_left():
-    """Считает, сколько дней осталось по тарифу."""
+    """Сколько дней осталось по тарифу. Безопасна при любом формате даты."""
+    from datetime import timezone
     tariff = st.session_state.get("user_tariff", "trial")
-    end_date = None
-    
-    if tariff == "trial":
-        end_date = st.session_state.get("trial_end")
-    else:
-        end_date = st.session_state.get("sub_end")
-    
-    if end_date is None:
-        # Первый вход — нет даты окончания, даём 7 дней триала
-        st.session_state.trial_end = datetime.now() + timedelta(days=7)
-        return 7
+    end_date = st.session_state.get("trial_end") if tariff == "trial" else st.session_state.get("sub_end")
+    if not end_date:
+        return 0
+    try:
+        if isinstance(end_date, str):
+            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=timezone.utc)
+        return max(0, (end_date - datetime.now(timezone.utc)).days)
+    except Exception:
+        return 0
     
     # Приводим к aware datetime (UTC) для корректного сравнения
     from datetime import timezone
@@ -926,11 +927,22 @@ with st.sidebar:
         else:
             st.caption("Здесь будут сохранённые отчёты.")
             st.info("Появится после подключения реальных данных.")
+
 def get_days_left():
-    end_date = st.session_state.trial_end if st.session_state.user_tariff == "trial" else st.session_state.sub_end
-    if not end_date: return 0
-    delta = end_date - datetime.now()
-    return max(0, math.ceil(delta.total_seconds() / 86400))
+    """Сколько дней осталось по тарифу. Безопасна при любом формате даты."""
+    from datetime import timezone
+    tariff = st.session_state.get("user_tariff", "trial")
+    end_date = st.session_state.get("trial_end") if tariff == "trial" else st.session_state.get("sub_end")
+    if not end_date:
+        return 0
+    try:
+        if isinstance(end_date, str):
+            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=timezone.utc)
+        return max(0, (end_date - datetime.now(timezone.utc)).days)
+    except Exception:
+        return 0
 
 # Компактные отступы + зелёная кнопка сканирования
 st.markdown("""
