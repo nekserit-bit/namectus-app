@@ -84,9 +84,11 @@ def db_log(email, action, details=""):
 # БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
 # =========================
 load_dotenv()
-YANDEX_CLIENT_ID = os.getenv("YANDEX_CLIENT_ID")
-YANDEX_CLIENT_SECRET = os.getenv("YANDEX_CLIENT_SECRET")
-YANDEX_REDIRECT_URI = os.getenv("YANDEX_REDIRECT_URI", "https://namectus-app.onrender.com/callback")
+YANDEX_CLIENT_ID = st.secrets.get("YANDEX_CLIENT_ID") or os.getenv("YANDEX_CLIENT_ID")
+YANDEX_CLIENT_SECRET = st.secrets.get("YANDEX_CLIENT_SECRET") or os.getenv("YANDEX_CLIENT_SECRET")
+YANDEX_REDIRECT_URI = (st.secrets.get("YANDEX_REDIRECT_URI")
+                       or os.getenv("YANDEX_REDIRECT_URI")
+                       or "https://namectus-app-bcjbphr6biswigvrnz7a2g.streamlit.app/")
 
 # =========================
 # ФАЙЛЫ ХРАНЕНИЯ
@@ -930,8 +932,8 @@ if "code" in query_params and "yandex_token" not in st.session_state:
     token = exchange_code_for_token(query_params["code"])
     if token:
         st.session_state["yandex_token"] = token
-        with open(TOKENS_FILE, 'w', encoding='utf-8') as f:
-            json.dump({"yandex": {"token": token}}, f)
+        st.session_state.oauth_ok = True
+        st.session_state.ask_yandex_login = False
         st.query_params.clear()
         st.rerun()
 
@@ -984,8 +986,15 @@ with col_y:
             st.error("💳 Оплатите счёт, после чего подключайте кабинеты и проекты.")
         elif current_cabs >= total_limit:
             st.session_state.show_limit_dialog = True
+        elif not st.session_state.get("yandex_token"):
+            st.session_state.ask_yandex_login = True
         else:
             st.session_state.show_project_dialog = "yandex"
+    if st.session_state.get("ask_yandex_login"):
+        st.markdown(f'<a href="{get_yandex_auth_url()}" style="color:#90caf9;font-weight:bold;">🔐 Войти в Яндекс.Директ и разрешить доступ (только чтение)</a>', unsafe_allow_html=True)
+    if st.session_state.get("oauth_ok"):
+        st.session_state.oauth_ok = False
+        st.success("✅ Доступ получен! Нажми «Подключить Яндекс» ещё раз.")
 with col_g:
     st.markdown("**🔵 Google Ads**")
     st.button("Скоро", use_container_width=True, disabled=True, key="btn_soon_g")
