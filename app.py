@@ -231,7 +231,12 @@ def exchange_code_for_token(code):
     return None
 
 def get_yandex_auth_url():
-    return f"https://oauth.yandex.ru/authorize?response_type=code&client_id={YANDEX_CLIENT_ID}&redirect_uri={YANDEX_REDIRECT_URI}"
+    from urllib.parse import quote
+    state = quote(st.session_state.get("user_email") or "")
+    return (f"https://oauth.yandex.ru/authorize?response_type=code"
+            f"&client_id={YANDEX_CLIENT_ID}"
+            f"&redirect_uri={YANDEX_REDIRECT_URI}"
+            f"&state={state}")
 
 # =========================
 # АНАЛИЗ КАМПАНИЙ
@@ -482,6 +487,22 @@ def get_total_limit():
     if st.session_state.user_tariff == "trial": return 1
     if not st.session_state.user_tariff: return 0
     return TARIFFS[st.session_state.user_tariff]["limit"] + st.session_state.extra_accounts
+
+# =========================
+# ОБРАБОТКА ВОЗВРАТА С ЯНДЕКСА (до экрана входа!)
+# =========================
+query_params = st.query_params
+if "code" in query_params and "yandex_token" not in st.session_state:
+    token = exchange_code_for_token(query_params["code"])
+    if token:
+        st.session_state["yandex_token"] = token
+        st.session_state.oauth_ok = True
+        returned_email = query_params.get("state", "")
+        if returned_email:
+            st.session_state.user_email = returned_email
+            st.session_state.auth_passed = True
+        st.query_params.clear()
+        st.rerun()
 
 # =========================
 # ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + НОВАЯ РЕГИСТРАЦИЯ + ПРОВЕРКА ПАРОЛЯ)
@@ -925,25 +946,6 @@ if "scan_results" not in st.session_state:
     st.session_state.scan_results = None
 if "history" not in st.session_state:
     st.session_state.history = load_history()
-
-# Загрузка токена
-if "yandex_token" not in st.session_state and os.path.exists(TOKENS_FILE):
-    try:
-        with open(TOKENS_FILE, 'r', encoding='utf-8') as f:
-            token = json.load(f).get("yandex", {}).get("token")
-            if token: st.session_state["yandex_token"] = token
-    except: pass
-
-# Обработка OAuth
-query_params = st.query_params
-if "code" in query_params and "yandex_token" not in st.session_state:
-    token = exchange_code_for_token(query_params["code"])
-    if token:
-        st.session_state["yandex_token"] = token
-        st.session_state.oauth_ok = True
-        st.session_state.ask_yandex_login = False
-        st.query_params.clear()
-        st.rerun()
 
 st.divider()
 
