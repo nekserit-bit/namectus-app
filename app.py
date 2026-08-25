@@ -13,8 +13,18 @@ import math
 # =========================
 from supabase import create_client
 
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+def _secret(key, default=""):
+    """Читает секрет из Streamlit-секретов или переменных среды. Не падает."""
+    try:
+        v = st.secrets.get(key)
+        if v is not None:
+            return v
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+SUPABASE_URL = _secret("SUPABASE_URL", "")
+SUPABASE_KEY = _secret("SUPABASE_KEY", "")
 sb = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 def _safe_parse(s):
@@ -84,11 +94,9 @@ def db_log(email, action, details=""):
 # БЕЗОПАСНАЯ ЗАГРУЗКА КЛЮЧЕЙ
 # =========================
 load_dotenv()
-YANDEX_CLIENT_ID = st.secrets.get("YANDEX_CLIENT_ID") or os.getenv("YANDEX_CLIENT_ID")
-YANDEX_CLIENT_SECRET = st.secrets.get("YANDEX_CLIENT_SECRET") or os.getenv("YANDEX_CLIENT_SECRET")
-YANDEX_REDIRECT_URI = (st.secrets.get("YANDEX_REDIRECT_URI")
-                       or os.getenv("YANDEX_REDIRECT_URI")
-                       or "https://namectus-app-bcjbphr6biswigvrnz7a2g.streamlit.app/")
+YANDEX_CLIENT_ID = _secret("YANDEX_CLIENT_ID")
+YANDEX_CLIENT_SECRET = _secret("YANDEX_CLIENT_SECRET")
+YANDEX_REDIRECT_URI = _secret("YANDEX_REDIRECT_URI", "https://namectus-app-bcjbphr6biswigvrnz7a2g.streamlit.app/")
 
 # =========================
 # ФАЙЛЫ ХРАНЕНИЯ
