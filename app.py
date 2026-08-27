@@ -240,41 +240,55 @@ def get_yandex_auth_url():
             f"&state={state}")
 
 def get_yandex_accounts():
-    """Список доступных рекламных кабинетов Яндекса (для агентства — все клиенты)."""
+    """Список кабинетов Яндекса: у агентства — клиенты, иначе — свой кабинет."""
     token = st.session_state.get("yandex_token")
     if not token:
         st.session_state.ya_error = "Токена доступа нет."
         return []
+    headers = {"Authorization": f"Bearer {token}", "Accept-Language": "ru"}
     try:
+        # 1) Агентство: список клиентов (как «Мои клиенты» в Директ.Про)
         r = requests.post(
-            "https://api.direct.yandex.ru/json/v5/clients",
-            headers={"Authorization": f"Bearer {token}", "Accept-Language": "ru"},
-            json={"method": "get", "params": {"FieldNames": ["Login", "ManagedLogins", "ClientInfo"]}}
+            "https://api.direct.yandex.ru/json/v5/agencyClients",
+            headers=headers,
+            json={"method": "get", "params": {
+                "SelectionCriteria": {},
+                "FieldNames": ["Login", "ClientInfo", "ClientId", "Archived"]
+            }}
         )
         data = r.json()
-        if "error" in data:
-            st.session_state.ya_error = f"Яндекс говорит: {data.get('error')} / {data.get('error_description', '')}"
-            return []
-        result = data.get("result", {})
-        clients = result.get("clients") or result.get("Clients") or []
-        if not clients:
-            st.session_state.ya_error = f"Яндекс вернул пустой список. Сырой ответ: {str(data)[:500]}"
-            return []
-        st.session_state.ya_error = ""
+        res = data.get("result", {})
+        clients = res.get("Clients") or res.get("clients") or []
         accounts = []
         for c in clients:
+            name = c.get("ClientInfo", "") or c.get("Login", "")
+            if c.get("Archived") == "YES":
+                name += " (архив)"
+            accounts.append({"login": c.get("Login", ""), "name": name})
+        if accounts:
+            st.session_state.ya_error = ""
+            return accounts
+        # 2) Не агентство: показываем собственный кабинет
+        r2 = requests.post(
+            "https://api.direct.yandex.ru/json/v5/clients",
+            headers=headers,
+            json={"method": "get", "params": {"FieldNames": ["Login", "ClientInfo"]}}
+        )
+        data2 = r2.json()
+        if "error" in data2:
+            st.session_state.ya_error = f"Яндекс говорит: {data2.get('error')} / {data2.get('error_description', '')}"
+            return []
+        res2 = data2.get("result", {})
+        own = res2.get("Clients") or res2.get("clients") or []
+        accounts = []
+        for c in own:
             info = c.get("ClientInfo")
-            if isinstance(info, dict):
-                own_name = info.get("Name") or c.get("Login", "")
-            else:
-                own_name = str(info) if info else c.get("Login", "")
-            sub = c.get("ManagedLogins") or []
-            if sub:
-                for s in sub:
-                    login = s.get("Login") if isinstance(s, dict) else s
-                    accounts.append({"login": login, "name": login})
-            else:
-                accounts.append({"login": c.get("Login", ""), "name": own_name})
+            name = info if isinstance(info, str) else c.get("Login", "")
+            accounts.append({"login": c.get("Login", ""), "name": name or c.get("Login", "")})
+        if not accounts:
+            st.session_state.ya_error = f"Яндекс вернул пустой список. Сырой ответ: {str(data2)[:400]}"
+        else:
+            st.session_state.ya_error = ""
         return accounts
     except Exception as e:
         st.session_state.ya_error = f"Запрос не удался: {e}"
