@@ -249,7 +249,7 @@ def get_yandex_accounts():
         r = requests.post(
             "https://api.direct.yandex.ru/json/v5/clients",
             headers={"Authorization": f"Bearer {token}", "Accept-Language": "ru"},
-            json={"method": "get", "params": {"SelectionCriteria": {}}}
+            json={"method": "get", "params": {"FieldNames": ["Login", "Name", "Logins"]}}
         )
         data = r.json()
         if "error" in data:
@@ -259,12 +259,12 @@ def get_yandex_accounts():
         clients = data.get("result", {}).get("clients", [])
         accounts = []
         for c in clients:
-            sub = c.get("logins") or []
+            sub = c.get("Logins") or []
             if sub:
                 for s in sub:
                     accounts.append({"login": s, "name": s})
             else:
-                accounts.append({"login": c.get("login", ""), "name": c.get("name", "") or c.get("login", "")})
+                accounts.append({"login": c.get("Login", ""), "name": c.get("Name", "") or c.get("Login", "")})
         return accounts
     except Exception as e:
         st.session_state.ya_error = f"Запрос не удался: {e}"
