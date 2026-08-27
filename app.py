@@ -256,15 +256,18 @@ def get_yandex_accounts():
             st.session_state.ya_error = f"Яндекс говорит: {data.get('error')} / {data.get('error_description', '')}"
             return []
         result = data.get("result", {})
-        clients = result.get("clients", []) if isinstance(result, dict) else result
+        clients = result.get("clients") or result.get("Clients") or []
         if not clients:
             st.session_state.ya_error = f"Яндекс вернул пустой список. Сырой ответ: {str(data)[:500]}"
             return []
         st.session_state.ya_error = ""
         accounts = []
         for c in clients:
-            info = c.get("ClientInfo") or {}
-            own_name = info.get("Name") or c.get("Login", "")
+            info = c.get("ClientInfo")
+            if isinstance(info, dict):
+                own_name = info.get("Name") or c.get("Login", "")
+            else:
+                own_name = str(info) if info else c.get("Login", "")
             sub = c.get("ManagedLogins") or []
             if sub:
                 for s in sub:
