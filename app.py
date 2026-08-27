@@ -1215,6 +1215,7 @@ def show_limit_dialog():
         "trial":        {"price": 0,   "extra": 0,  "unit": "источник"},
         "business":     {"price": 20,  "extra": 10, "unit": "источник"},
         "agency_start": {"price": 50,  "extra": 5,  "unit": "проект"},
+        "agency_start": {"price": 50,  "extra": 5,  "unit": "проект"},
         "agency":       {"price": 150, "extra": 5,  "unit": "проект"},
         "agency_pro":   {"price": 300, "extra": 5,  "unit": "проект"},
         "enterprise":   {"price": 500, "extra": 5,  "unit": "проект"},
@@ -1254,12 +1255,6 @@ def show_limit_dialog():
     if st.button("💳 Сформировать счёт", type="primary", use_container_width=True, key="dlg_switch"):
         new_tariff = keys[texts.index(choice)]
         make_invoice(new_tariff, note=f"Переход на тариф «{TARIFFS[new_tariff]['name']}», подписка 30 дней", action="switch", action_data={"tariff": new_tariff})
-        st.session_state.show_limit_dialog = False
-        st.session_state.invoice_ready = True
-        st.rerun()
-        st.session_state.user_tariff = keys[texts.index(choice)]
-        st.session_state.sub_end = datetime.now() + timedelta(days=30)
-        st.session_state.extra_accounts = 0
         st.session_state.show_limit_dialog = False
         st.session_state.invoice_ready = True
         st.rerun()
