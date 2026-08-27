@@ -247,9 +247,9 @@ def get_yandex_accounts():
         return []
     headers = {"Authorization": f"Bearer {token}", "Accept-Language": "ru"}
     try:
-        # 1) Агентство: список клиентов (как «Мои клиенты» в Директ.Про)
+        # 1) Агентство: список клиентов (адрес — маленькими буквами!)
         r = requests.post(
-            "https://api.direct.yandex.ru/json/v5/agencyClients",
+            "https://api.direct.yandex.ru/json/v5/agencyclients",
             headers=headers,
             json={"method": "get", "params": {
                 "SelectionCriteria": {},
@@ -257,17 +257,21 @@ def get_yandex_accounts():
             }}
         )
         data = r.json()
-        res = data.get("result", {})
-        clients = res.get("Clients") or res.get("clients") or []
-        accounts = []
-        for c in clients:
-            name = c.get("ClientInfo", "") or c.get("Login", "")
-            if c.get("Archived") == "YES":
-                name += " (архив)"
-            accounts.append({"login": c.get("Login", ""), "name": name})
-        if accounts:
-            st.session_state.ya_error = ""
-            return accounts
+        if "error" in data:
+            st.session_state.ya_agency_error = f"agencyclients: {data.get('error')} / {data.get('error_description', '')}"
+        else:
+            st.session_state.ya_agency_error = ""
+            res = data.get("result", {})
+            clients = res.get("Clients") or res.get("clients") or []
+            accounts = []
+            for c in clients:
+                name = c.get("ClientInfo", "") or c.get("Login", "")
+                if c.get("Archived") == "YES":
+                    name += " (архив)"
+                accounts.append({"login": c.get("Login", ""), "name": name})
+            if accounts:
+                st.session_state.ya_error = ""
+                return accounts
         # 2) Не агентство: показываем собственный кабинет
         r2 = requests.post(
             "https://api.direct.yandex.ru/json/v5/clients",
@@ -1148,18 +1152,7 @@ def show_project_dialog():
 if st.session_state.get("show_project_dialog"):
     show_project_dialog()
 
-# --- ОКНО ВЫБОРА КАБИНЕТОВ ЯНДЕКСА (реальные данные из API) ---
-@st.dialog("🔴 Подключение Яндекс.Директ")
-def show_yandex_dialog():
-    st.caption("Шаг 1. Отметьте кабинеты, которые подключаем.")
-    if "ya_accounts" not in st.session_state or not st.session_state.ya_accounts:
-        with st.spinner("Получаем список кабинетов из Яндекса..."):
-            st.session_state.ya_accounts = get_yandex_accounts()
-    accounts = st.session_state.ya_accounts
-    if not accounts:
-        err = st.session_state.get("ya_error", "")
-        st.warning(f"Яндекс не отдал список кабинетов. {err or 'Проверьте, что в приложении на oauth.yandex.ru включено право «Яндекс.Директ API».'}")
-        return
+
     options = {}
     for a in accounts:
         options[f"{a['login']} — {a['name']}"] = a
@@ -1215,6 +1208,9 @@ if st.session_state.get("source_ready"):
 # --- ОКНО ЛИМИТА (самодостаточное) ---
 @st.dialog("🛒 Расширение возможностей")
 def show_limit_dialog():
+    if st.button("✖ Закрыть окно", key="close_lim"):
+        st.session_state.show_limit_dialog = False
+        st.rerun()
     PR = {
         "trial":        {"price": 0,   "extra": 0,  "unit": "источник"},
         "business":     {"price": 20,  "extra": 10, "unit": "источник"},
