@@ -1152,7 +1152,24 @@ def show_project_dialog():
 if st.session_state.get("show_project_dialog"):
     show_project_dialog()
 
-
+# --- ОКНО ВЫБОРА КАБИНЕТОВ ЯНДЕКСА (реальные данные из API) ---
+@st.dialog("🔴 Подключение Яндекс.Директ")
+def show_yandex_dialog():
+    if st.button("✖ Закрыть окно", key="close_ydx"):
+        st.session_state.show_yandex_dialog = False
+        st.session_state.ya_accounts = None
+        st.rerun()
+    if st.session_state.get("ya_agency_error"):
+        st.caption(f"🔧 Диагностика: {st.session_state.ya_agency_error}")
+    st.caption("Шаг 1. Отметьте кабинеты, которые подключаем.")
+    if "ya_accounts" not in st.session_state or not st.session_state.ya_accounts:
+        with st.spinner("Получаем список кабинетов из Яндекса..."):
+            st.session_state.ya_accounts = get_yandex_accounts()
+    accounts = st.session_state.ya_accounts
+    if not accounts:
+        err = st.session_state.get("ya_error", "")
+        st.warning(f"Яндекс не отдал список кабинетов. {err or 'Проверьте, что в приложении на oauth.yandex.ru включено право «Яндекс.Директ API».'}")
+        return
     options = {}
     for a in accounts:
         options[f"{a['login']} — {a['name']}"] = a
