@@ -920,17 +920,16 @@ with st.sidebar:
 
         st.markdown("**Активные:**")
         if pending:
-            for inv in reversed(pending):
-                if st.button(f"⏳ {inv['num']} • {inv['date']} • {inv['sum']}", use_container_width=True, key=f"inv_row_{inv['num']}"):
-                    st.session_state.view_invoice = inv["num"]
+for idx, inv in enumerate(reversed(pending)):
+    if st.button(f"⏳ {inv['num']} • {inv['date']} • {inv['sum']}", use_container_width=True, key=f"inv_row_{idx}_{inv['num']}"):
         else:
             st.caption("Нет активных счетов.")
 
         if paid:
             st.divider()
             st.markdown("**Оплаченные:**")
-            for inv in reversed(paid):
-                st.caption(f"✅ {inv['num']} • {inv['date']} • {inv['sum']}")
+for idx, inv in enumerate(reversed(paid)):
+    st.caption(f"✅ {inv['num']} • {inv['date']} • {inv['sum']}")
 
         if st.session_state.get("view_invoice"):
             inv = next((i for i in st.session_state.invoices if i["num"] == st.session_state.view_invoice), None)
