@@ -298,6 +298,14 @@ def get_yandex_accounts():
         st.session_state.ya_error = f"Запрос не удался: {e}"
         return []
 
+def get_campaign_url(source, campaign_id):
+    """Прямая ссылка на кампанию в кабинете. NAMECTUS не управляет — перенаправляет."""
+    if source == "yandex":
+        return f"https://direct.yandex.ru/registered/campaign/{campaign_id}"
+    if source == "google":
+        return "https://ads.google.com/aw/campaigns"
+    return "https://adsmanager.facebook.com"
+
 # =========================
 # АНАЛИЗ КАМПАНИЙ
 # =========================
