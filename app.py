@@ -327,7 +327,7 @@ def fetch_yandex_scan():
         login = acc["login"]
         project = acc.get("project", login)
         hdr = {"Authorization": f"Bearer {token}", "Accept-Language": "ru",
-               "ClientLogin": login, "returnMoneyInMicros": "NO"}
+               "Client-Login": login, "returnMoneyInMicros": "NO"}
         try:
             r = requests.post("https://api.direct.yandex.ru/json/v5/campaigns", headers=hdr,
                               json={"method": "get", "params": {"FieldNames": ["Id", "Name", "State", "Status"]}})
