@@ -270,6 +270,7 @@ def get_yandex_accounts():
                     name += " (архив)"
                 accounts.append({"login": c.get("Login", ""), "name": name})
             if accounts:
+                accounts.sort(key=lambda x: str(x.get("name", "")).lower())
                 st.session_state.ya_error = ""
                 return accounts
         # 2) Не агентство: показываем собственный кабинет
@@ -293,6 +294,7 @@ def get_yandex_accounts():
             st.session_state.ya_error = f"Яндекс вернул пустой список. Сырой ответ: {str(data2)[:400]}"
         else:
             st.session_state.ya_error = ""
+        accounts.sort(key=lambda x: str(x.get("name", "")).lower())
         return accounts
     except Exception as e:
         st.session_state.ya_error = f"Запрос не удался: {e}"
@@ -358,11 +360,11 @@ def fetch_yandex_scan():
                 resp = requests.post("https://api.direct.yandex.ru/json/v5/reports", headers=hdr, json=body)
                 tries += 1
             if resp.status_code != 200:
-                errors.append(f"{login}: отчёт HTTP {resp.status_code}")
+                errors.append(f"{login}: отчёт HTTP {resp.status_code} | {resp.text[:300]}")
                 continue
             lines = [ln for ln in resp.text.splitlines() if ln.strip() and not ln.startswith("#")]
             if not lines:
-                errors.append(f"{login}: пустой отчёт")
+                errors.append(f"{login}: нет данных за 14 дней (кабинет, возможно, спит)")
                 continue
             header = lines[0].split("\t")
             for ln in lines[1:]:
