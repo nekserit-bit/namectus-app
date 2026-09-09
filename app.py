@@ -1148,9 +1148,9 @@ else:
 # 1. СНАЧАЛА: сканирование (компактная зелёная кнопка) или напоминалка
 if current_cabs > 0:
     if st.button("🔍 Сканировать", type="primary", key="btn_scan_main"):
-        with st.spinner("🔄 Анализируем данные..."):
+        with st.spinner("🔄 Читаем реальные данные кабинетов..."):
             try:
-                  df, scan_errors = fetch_yandex_scan()
+                df, scan_errors = fetch_yandex_scan()
                 if df.empty:
                     st.warning("Из кабинетов пока нет данных. " + ("; ".join(scan_errors) if scan_errors else ""))
                 else:
