@@ -350,7 +350,7 @@ def fetch_yandex_scan():
         ids = [c["Id"] for c in camps]
         try:
             body = {"method": "get", "params": {
-                "SelectionCriteria": {"DateFrom": d_from, "DateTo": d_to, "CampaignIds": ids},
+                "SelectionCriteria": {"DateFrom": d_from, "DateTo": d_to},
                 "FieldNames": ["Date", "CampaignId", "Impressions", "Clicks", "Cost", "Conversions"],
                 "DateRangeType": "CUSTOM_RANGE", "Format": "TSV", "IncludeVAT": "NO"}}
             resp = requests.post("https://api.direct.yandex.ru/json/v5/reports", headers=hdr, json=body)
