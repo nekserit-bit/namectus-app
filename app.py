@@ -51,6 +51,9 @@ def db_load_all(email):
         a = sb.table("accounts").select("*").eq("email", email).execute()
         st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "login": x.get("login", ""), "date": datetime.now()} for x in a.data]
         i = sb.table("invoices").select("*").eq("email", email).execute()
+        tk = sb.table("tokens").select("*").eq("email", email).execute()
+        if tk.data:
+            st.session_state.yandex_token = tk.data[0].get("yandex_token") or None
         st.session_state.invoices = [{"num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data") or {}, "html": x["html"]} for x in i.data]
     except Exception as e:
         print(f"Ошибка загрузки из базы: {e}")
@@ -682,6 +685,17 @@ if "code" in query_params and "yandex_token" not in st.session_state:
 if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
     db_load_all(st.session_state.user_email)
     st.session_state.db_loaded = True
+
+# Сохраняем токен Яндекса в базу (один раз за сессию), чтобы не логиниться каждый раз
+if sb and st.session_state.get("auth_passed") and st.session_state.get("yandex_token") and not st.session_state.get("token_saved"):
+    try:
+        sb.table("tokens").upsert({
+            "email": st.session_state.user_email,
+            "yandex_token": st.session_state.yandex_token,
+        }).execute()
+        st.session_state.token_saved = True
+    except Exception as e:
+        print(f"Не удалось сохранить токен: {e}")
 
 # =========================
 # ЭКРАН 1: ВХОД И РЕГИСТРАЦИЯ (КОМПАКТНАЯ ШАПКА + НОВАЯ РЕГИСТРАЦИЯ + ПРОВЕРКА ПАРОЛЯ)
