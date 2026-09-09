@@ -309,47 +309,133 @@ def get_campaign_url(source, campaign_id):
 # =========================
 # АНАЛИЗ КАМПАНИЙ
 # =========================
+def fetch_yandex_scan():
+    """Реальные данные: кампании + статистика за 14 дней по подключённым кабинетам."""
+    import time
+    from datetime import date, timedelta
+    token = st.session_state.get("yandex_token")
+    rows = []
+    errors = []
+    if not token:
+        return pd.DataFrame(rows), ["Нет токена Яндекса: переподключите кабинет."]
+    today = date.today()
+    d_from = (today - timedelta(days=14)).isoformat()
+    d_to = (today - timedelta(days=1)).isoformat()
+    for acc in st.session_state.connected_accounts:
+        if acc.get("platform") != "yandex" or not acc.get("login"):
+            continue
+        login = acc["login"]
+        project = acc.get("project", login)
+        hdr = {"Authorization": f"Bearer {token}", "Accept-Language": "ru",
+               "ClientLogin": login, "returnMoneyInMicros": "NO"}
+        try:
+            r = requests.post("https://api.direct.yandex.ru/json/v5/campaigns", headers=hdr,
+                              json={"method": "get", "params": {"FieldNames": ["Id", "Name", "State", "Status"]}})
+            cdata = r.json()
+            if "error" in cdata:
+                errors.append(f"{login}: {cdata.get('error')}")
+                continue
+            res = cdata.get("result", {})
+            camps = res.get("Campaigns") or res.get("campaigns") or []
+        except Exception as e:
+            errors.append(f"{login}: campaigns {e}")
+            continue
+        if not camps:
+            errors.append(f"{login}: нет кампаний")
+            continue
+        names = {c["Id"]: c.get("Name", "") for c in camps}
+        states = {c["Id"]: c.get("State", "") for c in camps}
+        ids = [c["Id"] for c in camps]
+        try:
+            body = {"method": "get", "params": {
+                "SelectionCriteria": {"DateFrom": d_from, "DateTo": d_to, "CampaignIds": ids},
+                "FieldNames": ["Date", "CampaignId", "Impressions", "Clicks", "Cost", "Conversions"],
+                "DateRangeType": "CUSTOM_RANGE", "Format": "TSV", "IncludeVAT": "NO"}}
+            resp = requests.post("https://api.direct.yandex.ru/json/v5/reports", headers=hdr, json=body)
+            tries = 0
+            while resp.status_code in (201, 202) and tries < 10:
+                time.sleep(int(resp.headers.get("retryIn", 5)))
+                resp = requests.post("https://api.direct.yandex.ru/json/v5/reports", headers=hdr, json=body)
+                tries += 1
+            if resp.status_code != 200:
+                errors.append(f"{login}: отчёт HTTP {resp.status_code}")
+                continue
+            lines = [ln for ln in resp.text.splitlines() if ln.strip() and not ln.startswith("#")]
+            if not lines:
+                errors.append(f"{login}: пустой отчёт")
+                continue
+            header = lines[0].split("\t")
+            for ln in lines[1:]:
+                rec = dict(zip(header, ln.split("\t")))
+                cid = rec.get("CampaignId", "")
+                rows.append({
+                    "project": project, "source": "yandex", "campaign_id": str(cid),
+                    "campaign": names.get(int(cid), cid) if str(cid).isdigit() else cid,
+                    "date": rec.get("Date", ""), "impressions": int(float(rec.get("Impressions", 0) or 0)),
+                    "clicks": int(float(rec.get("Clicks", 0) or 0)), "cost": float(rec.get("Cost", 0) or 0),
+                    "conversions": float(rec.get("Conversions", 0) or 0),
+                    "status": states.get(int(cid), "") if str(cid).isdigit() else ""})
+        except Exception as e:
+            errors.append(f"{login}: отчёт {e}")
+    return pd.DataFrame(rows), errors
+
+
 def analyze_campaigns(df: pd.DataFrame):
     from namectus_engine import NamectusEngine
     engine = NamectusEngine()
     results = []
-    
+
     for (project, campaign), camp_df in df.groupby(["project", "campaign"]):
-        camp_df = camp_df.sort_values("date").reset_index(drop=True)
-        total_days = len(camp_df)
+        camp_df = camp_df.copy()
+        camp_df["date"] = pd.to_datetime(camp_df["date"], errors="coerce")
+        camp_df = camp_df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+        if camp_df.empty:
+            continue
+        total_days = camp_df["date"].nunique()
         source = camp_df["source"].iloc[0]
         campaign_id = str(camp_df["campaign_id"].iloc[0])
-        
-        if total_days < 7:
-            results.append({"label": f"{project} / {campaign}", "status": "data_accumulation", "problem": f"Доступно только {total_days} дней", "actions": ["Наблюдать"], "source": source, "campaign_id": campaign_id, "project": project, "campaign": campaign})
-            continue
-        
+        status = str(camp_df["status"].iloc[0]) if "status" in camp_df.columns else "active"
+
         total_spent = camp_df["cost"].sum()
-        total_conv = int(camp_df["conversions"].sum())
+        total_conv = camp_df["conversions"].sum()
         total_clicks = int(camp_df["clicks"].sum())
         total_impressions = int(camp_df["impressions"].sum())
-        
+
+        half = camp_df["date"].max() - pd.Timedelta(days=7)
+        prev_df = camp_df[camp_df["date"] <= half]
+        cur_df = camp_df[camp_df["date"] > half]
+        prev_conv = prev_df["conversions"].sum()
+        cur_conv = cur_df["conversions"].sum()
+        prev_cpa = prev_df["cost"].sum() / prev_conv if prev_conv > 0 else 0
+        cur_cpa = cur_df["cost"].sum() / cur_conv if cur_conv > 0 else 0
+        prev_ctr = prev_df["clicks"].sum() / prev_df["impressions"].sum() if prev_df["impressions"].sum() > 0 else 0
+        cur_ctr = cur_df["clicks"].sum() / cur_df["impressions"].sum() if cur_df["impressions"].sum() > 0 else 0
+
+        base = {"label": f"{project} / {campaign}", "source": source, "campaign_id": campaign_id,
+                "project": project, "campaign": campaign}
+
+        if total_days < 7:
+            results.append({**base, "status": "data_accumulation",
+                            "problem": f"Доступно только {total_days} дн. данных", "actions": ["Наблюдать"]})
+            continue
+
         campaign_info = {
             'days': total_days, 'spend': total_spent, 'currency': '₽',
-            'conversions': total_conv, 'clicks': total_clicks, 'status': 'active',
+            'conversions': total_conv, 'clicks': total_clicks, 'status': status,
             'budget_remaining': 0, 'daily_spend': total_spent / max(total_days, 1),
-            'previous_cpa': 0, 'current_cpa': total_spent / max(total_conv, 1),
-            'previous_ctr': 0.01, 'current_ctr': total_clicks / max(total_impressions, 1),
+            'previous_cpa': prev_cpa, 'current_cpa': cur_cpa,
+            'previous_ctr': prev_ctr, 'current_ctr': cur_ctr,
             'broken_links_count': 0
         }
-        
+
         alerts = engine.check_campaign(campaign_info)
-        base = {"label": f"{project} / {campaign}", "source": source, "campaign_id": campaign_id, "project": project, "campaign": campaign}
-        
         if not alerts:
             results.append({**base, "status": "ok", "problem": "", "actions": []})
         else:
             main_alert = alerts[0]
-            if main_alert['severity'] == 'critical':
-                status, actions = "critical", ["Исправить", "Наблюдать", "Игнорировать"]
-            else:
-                status, actions = "warning", ["Исправить", "Наблюдать", "Игнорировать"]
-            results.append({**base, "status": status, "problem": main_alert['description'], "actions": actions})
+            sev = "critical" if main_alert['severity'] == 'critical' else "warning"
+            results.append({**base, "status": sev, "problem": main_alert['description'],
+                            "actions": ["Исправить", "Наблюдать", "Игнорировать"]})
     return results
 
 # =========================
@@ -1064,17 +1150,21 @@ if current_cabs > 0:
     if st.button("🔍 Сканировать", type="primary", key="btn_scan_main"):
         with st.spinner("🔄 Анализируем данные..."):
             try:
-                SHEET_ID = "10cf-dT0Sd5K2c-39x_7zOxbyUdB8Lsr264VdTMhNP7E"
-                df = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv")
-                results = analyze_campaigns(df)
-                results = filter_hidden(results, st.session_state.history)
-                if not results:
-                    st.warning("Нет данных")
+                  df, scan_errors = fetch_yandex_scan()
+                if df.empty:
+                    st.warning("Из кабинетов пока нет данных. " + ("; ".join(scan_errors) if scan_errors else ""))
                 else:
+                    results = analyze_campaigns(df)
+                    results = filter_hidden(results, st.session_state.history)
                     st.session_state.scan_results = results
-                    db_log(st.session_state.user_email, "Сканирование", f"найдено результатов: {len(results)}")
-                    st.session_state.nav_screen = "choose_mode"
-                    st.rerun()
+                    if scan_errors:
+                        st.caption("Часть кабинетов не читается: " + "; ".join(scan_errors))
+                    if not results:
+                        st.warning("Нет данных")
+                    else:
+                        db_log(st.session_state.user_email, "Сканирование", f"найдено результатов: {len(results)}")
+                        st.session_state.nav_screen = "choose_mode"
+                        st.rerun()
             except Exception as e:
                 st.error(f"Ошибка: {e}")
 else:
