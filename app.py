@@ -352,9 +352,9 @@ def fetch_yandex_scan():
             body = {"method": "get", "params": {
                 "ReportName": "namectus_scan",
                 "ReportType": "CAMPAIGN_PERFORMANCE_REPORT",
-                "SelectionCriteria": {"DateFrom": d_from, "DateTo": d_to},
+                "SelectionCriteria": {},
                 "FieldNames": ["Date", "CampaignId", "Impressions", "Clicks", "Cost", "Conversions"],
-                "DateRangeType": "CUSTOM_RANGE", "Format": "TSV", "IncludeVAT": "NO"}}
+                "DateRangeType": "LAST_14_DAYS", "Format": "TSV", "IncludeVAT": "NO"}}
             resp = requests.post("https://api.direct.yandex.ru/json/v5/reports", headers=hdr, json=body)
             tries = 0
             while resp.status_code in (201, 202) and tries < 10:
