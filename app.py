@@ -351,6 +351,7 @@ def fetch_yandex_scan():
         try:
             body = {"method": "get", "params": {
                 "ReportName": "namectus_scan",
+                "ReportType": "CAMPAIGN_PERFORMANCE_REPORT",
                 "SelectionCriteria": {"DateFrom": d_from, "DateTo": d_to},
                 "FieldNames": ["Date", "CampaignId", "Impressions", "Clicks", "Cost", "Conversions"],
                 "DateRangeType": "CUSTOM_RANGE", "Format": "TSV", "IncludeVAT": "NO"}}
