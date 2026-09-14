@@ -384,7 +384,7 @@ def fetch_yandex_scan():
                     "project": project, "source": "yandex", "campaign_id": str(cid),
                     "campaign": names.get(int(cid), cid) if str(cid).isdigit() else cid,
                     "date": rec.get("Date", ""), "impressions": int(float(rec.get("Impressions", 0) or 0)),
-                    "clicks": int(float(rec.get("Clicks", 0) or 0)), "cost": float(rec.get("Cost", 0) or 0),
+                    "clicks": int(float(rec.get("Clicks", 0) or 0)), "cost": float(rec.get("Cost", 0) or 0) / 1_000_000,
                     "conversions": float(rec.get("Conversions", 0) or 0),
                     "status": states.get(int(cid), "") if str(cid).isdigit() else ""})
         except Exception as e:
@@ -1185,8 +1185,21 @@ if current_cabs > 0:
                     if not results:
                         st.warning("Нет данных")
                     else:
+                        crit = [r for r in results if r["status"] == "critical"]
+                        warn = [r for r in results if r["status"] == "warning"]
+                        drain = sum(r.get("spend", 0) for r in crit)
+                        hours = len(results) * 15 / 60
+                        st.session_state.scan_summary = {
+                            "cabs": int(df["project"].nunique()),
+                            "errors": len(crit) + len(warn),
+                            "critical": len(crit),
+                            "warning": len(warn),
+                            "drain": round(drain, 2),
+                            "hours": int(hours),
+                            "minutes": int(round((hours - int(hours)) * 60)),
+                        }
                         db_log(st.session_state.user_email, "Сканирование", f"найдено результатов: {len(results)}")
-                        st.session_state.nav_screen = "choose_mode"
+                        st.session_state.nav_screen = "scan"
                         st.rerun()
             except Exception as e:
                 st.error(f"Ошибка: {e}")
@@ -1194,7 +1207,51 @@ else:
     col_msg, col_empty = st.columns([3, 1])
     with col_msg:
         st.info("Подключите хотя бы один рекламный кабинет, чтобы начать сканирование.")
-
+# --- РЕЗУЛЬТАТЫ СКАНА: сводка + проекты по алфавиту, раскрывающиеся ---
+if st.session_state.get("scan_results"):
+    results = st.session_state.scan_results
+    s = st.session_state.get("scan_summary", {})
+    problems = filter_hidden([r for r in results if r["status"] in ("critical", "warning")], st.session_state.history)
+    if s:
+        st.caption(
+            f"✅ Проверено рекламных кабинетов: {s.get('cabs', 0)} • "
+            f"🎯 Найдено ошибок: {s.get('errors', 0)} • "
+            f"💸 Предотвращён слив бюджета (при исправлении): {s.get('drain', 0)} ₽ • "
+            f"⏳ Сэкономлено: {s.get('hours', 0)} ч {s.get('minutes', 0)} мин ручного анализа"
+        )
+    if not problems:
+        st.success("✅ Проблем не найдено: все кампании здоровы.")
+    else:
+        for p in sorted(set(r["project"] for r in problems)):
+            pr = [r for r in problems if r["project"] == p]
+            crit = len([r for r in pr if r["status"] == "critical"])
+            head = f"📂 {p} — ошибок: {len(pr)}" + (f", из них критичных: {crit}" if crit else "")
+            with st.expander(head):
+                for r in sorted(pr, key=lambda x: (x["status"] != "critical", x["campaign"])):
+                    icon = "🔴" if r["status"] == "critical" else "🟡"
+                    with st.expander(f"{icon} {r['campaign']} — {r['problem']}"):
+                        st.markdown(f"**Период:** последние {r.get('days', 14)} дн. • **Расход кампании:** {r.get('spend', 0)} ₽")
+                        st.markdown("**Что проверить:**")
+                        st.markdown("• Формы заявки на сайте\n• Поисковые запросы\n• Объявления и креативы")
+                        url = get_campaign_url(r["source"], r["campaign_id"])
+                        st.markdown(f"🔗 [Открыть кампанию в кабинете]({url})")
+                        c1, c2, c3 = st.columns(3)
+                        with c1:
+                            if st.button("✅ Наблюдать", key=f"watch_{r['label']}"):
+                                st.session_state.history[r["label"]] = {"action": "Наблюдать", "date": datetime.now().strftime("%d.%m.%Y %H:%M")}
+                                save_history(st.session_state.history)
+                                st.rerun()
+                        with c2:
+                            if st.button("⏸ Игнорировать 24 ч", key=f"ignore_{r['label']}"):
+                                hide_until = datetime.now() + timedelta(hours=24)
+                                st.session_state.history[r["label"]] = {"action": "Игнорировать", "date": datetime.now().strftime("%d.%m.%Y %H:%M"), "hide_until": hide_until.strftime("%d.%m.%Y %H:%M")}
+                                save_history(st.session_state.history)
+                                st.rerun()
+                        with c3:
+                            if st.button("🗑 Закрыть", key=f"close_{r['label']}"):
+                                st.session_state.history[r["label"]] = {"action": "Закрыть", "date": datetime.now().strftime("%d.%m.%Y %H:%M"), "session_closed": True}
+                                save_history(st.session_state.history)
+                                st.rerun()
 st.divider()
 
 # 2. ПОТОМ: подключение кабинетов (названия — обычным текстом)
