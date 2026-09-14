@@ -371,9 +371,14 @@ def fetch_yandex_scan():
             if not lines:
                 errors.append(f"{login}: нет данных за 14 дней (кабинет, возможно, спит)")
                 continue
-            header = lines[0].split("\t")
-            for ln in lines[1:]:
-                rec = dict(zip(header, ln.split("\t")))
+            fields = ["Date", "CampaignId", "Impressions", "Clicks", "Cost", "Conversions"]
+            for ln in lines:
+                parts = ln.split("\t")
+                if len(parts) < len(fields):
+                    continue
+                rec = dict(zip(fields, parts))
+                if not str(rec.get("Date", ""))[:4].isdigit():
+                    continue
                 cid = rec.get("CampaignId", "")
                 rows.append({
                     "project": project, "source": "yandex", "campaign_id": str(cid),
