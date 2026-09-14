@@ -1275,8 +1275,7 @@ def show_yandex_dialog():
         st.session_state.show_yandex_dialog = False
         st.session_state.ya_accounts = None
         st.rerun()
-    if st.session_state.get("ya_agency_error"):
-        st.caption(f"🔧 Диагностика: {st.session_state.ya_agency_error}")
+
     st.caption("Шаг 1. Отметьте кабинеты, которые подключаем.")
     if "ya_accounts" not in st.session_state or not st.session_state.ya_accounts:
         with st.spinner("Получаем список кабинетов из Яндекса..."):
