@@ -761,7 +761,7 @@ if not st.session_state.auth_passed:
                 st.stop()
 
             # Поля ввода
-            reg_email = st.text_input(t("email_phone"), key="reg_email_new")
+            reg_email = st.text_input("Email", key="reg_email_new")
             reg_pass = st.text_input(t("password"), type="password", key="reg_pass_new")
             reg_pass_confirm = st.text_input("Подтвердите пароль", type="password", key="reg_pass_confirm_new")
             
@@ -799,6 +799,8 @@ if not st.session_state.auth_passed:
             if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
                 if not reg_email or not reg_pass or not reg_pass_confirm:
                     st.warning(t("fill_all_fields"))
+                elif "@" not in reg_email:
+                    st.error("Пока регистрация только по почте. Вход по телефону появится позже.")
                 elif reg_pass != reg_pass_confirm:
                     st.error("Пароли не совпадают! Проверьте поле 'Подтвердите пароль'.")
                 elif not is_strong:
@@ -813,6 +815,8 @@ if not st.session_state.auth_passed:
             if st.button(t("register_btn"), type="primary", use_container_width=True, key="btn_reg_new"):
                 if not reg_code or not reg_email or not reg_pass or not reg_pass_confirm:
                     st.warning(t("fill_all_fields"))
+                elif "@" not in reg_email:
+                    st.error("Пока регистрация только по почте. Вход по телефону появится позже.")
                 elif reg_code != "1234":
                     st.error("Неверный код! Попробуйте 1234.")
                 elif reg_pass != reg_pass_confirm:
@@ -1080,8 +1084,7 @@ with st.sidebar:
             st.info("Появится после подключения реальных данных.")
 
 def get_days_left():
-    """Сколько дней осталось по тарифу. Безопасна при любом формате даты."""
-    from datetime import timezone
+    """Сколько дней осталось по тарифу (календарно: сегодня = день 1)."""
     tariff = st.session_state.get("user_tariff", "trial")
     end_date = st.session_state.get("trial_end") if tariff == "trial" else st.session_state.get("sub_end")
     if not end_date:
@@ -1089,9 +1092,7 @@ def get_days_left():
     try:
         if isinstance(end_date, str):
             end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        if end_date.tzinfo is None:
-            end_date = end_date.replace(tzinfo=timezone.utc)
-        return max(0, (end_date - datetime.now(timezone.utc)).days)
+        return max(0, (end_date.date() - datetime.now().date()).days)
     except Exception:
         return 0
 
@@ -1138,6 +1139,8 @@ with col_info2:
 with col_info3:
     days = get_days_left()
     st.markdown(f"⏳ Осталось: {days} дней")
+if st.session_state.user_tariff == "trial" and 0 < days <= 2:
+    st.warning(f"⏳ Пробный период закончится через {days} дн.! Выберите платный тариф, чтобы NAMECTUS продолжил следить за рекламой: боковая панель → «Продлить или сменить тариф».")
 
 # Инициализация навигации
 if "nav_screen" not in st.session_state:
