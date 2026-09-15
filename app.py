@@ -4,6 +4,21 @@ import json
 import os
 from datetime import datetime, timedelta
 import requests
+import secrets
+import hashlib
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(8)
+    h = hashlib.sha256((salt + password).encode()).hexdigest()
+    return f"{salt}${h}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    if not stored or "$" not in stored:
+        return False
+    salt, h = stored.split("$", 1)
+    return hashlib.sha256((salt + password).encode()).hexdigest() == h
 from dotenv import load_dotenv
 import streamlit.components.v1 as components
 import math
@@ -66,7 +81,6 @@ def db_sync_all():
         email = st.session_state.user_email
         sb.table("users").upsert({
             "email": email,
-            "password": st.session_state.get("user_password", ""),
             "tariff": st.session_state.get("user_tariff") or "trial",
             "sub_end": st.session_state.get("sub_end").isoformat() if st.session_state.get("sub_end") else None,
             "trial_end": st.session_state.get("trial_end").isoformat() if st.session_state.get("trial_end") else None,
@@ -109,17 +123,6 @@ PROJECTS_FILE = "projects.json"
 TOKENS_FILE = "tokens.json"
 
 # =========================
-# СТРУКТУРА ТАРИФОВ (строго по документу)
-# =========================
-TARIFFS = {
-    "business": {"name": "Бизнес-клиент", "limit": 1, "price": 2000, "extra_price": 1000, "max_extra": None},
-    "agency_start": {"name": "Agency Start", "limit": 5, "price": 5000, "extra_price": 500, "max_extra": 18},
-    "agency": {"name": "Agency", "limit": 20, "price": 15000, "extra_price": 500, "max_extra": 45},
-    "agency_pro": {"name": "Agency Pro", "limit": 50, "price": 30000, "extra_price": 500, "max_extra": 90},
-    "enterprise": {"name": "Enterprise", "limit": 100, "price": 50000, "extra_price": 500, "max_extra": None}
-}
-
-# =========================
 # ИНИЦИАЛИЗАЦИЯ SESSION_STATE
 # =========================
 if "user_currency" not in st.session_state: st.session_state.user_currency = "RUB"
@@ -134,44 +137,10 @@ if "auth_passed" not in st.session_state: st.session_state.auth_passed = False
 
 # Вспомогательные функции для тарифов
 def get_total_limit():
-    if st.session_state.user_tariff == "trial": return 1
+    if st.session_state.user_tariff == "trial": return 5  # бета на 5 проектов
     if not st.session_state.user_tariff: return 0
     return TARIFFS[st.session_state.user_tariff]["limit"] + st.session_state.extra_accounts
 
-def get_days_left():
-    """Сколько дней осталось по тарифу. Безопасна при любом формате даты."""
-    from datetime import timezone
-    tariff = st.session_state.get("user_tariff", "trial")
-    end_date = st.session_state.get("trial_end") if tariff == "trial" else st.session_state.get("sub_end")
-    if not end_date:
-        return 0
-    try:
-        if isinstance(end_date, str):
-            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        if end_date.tzinfo is None:
-            end_date = end_date.replace(tzinfo=timezone.utc)
-        return max(0, (end_date - datetime.now(timezone.utc)).days)
-    except Exception:
-        return 0
-    
-    # Приводим к aware datetime (UTC) для корректного сравнения
-    from datetime import timezone
-    now = datetime.now(timezone.utc)
-    
-    if hasattr(end_date, 'tzinfo') and end_date.tzinfo is None:
-        end_date = end_date.replace(tzinfo=timezone.utc)
-    elif not hasattr(end_date, 'tzinfo'):
-        # Если это строка — парсим
-        try:
-            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        except Exception:
-            return 0
-    
-    if end_date.tzinfo is None:
-        end_date = end_date.replace(tzinfo=timezone.utc)
-    
-    delta = end_date - now
-    return max(0, delta.days)
 
 # =========================
 # УПРАВЛЕНИЕ ПРОЕКТАМИ (КАТАЛОГ)
@@ -303,10 +272,12 @@ def get_yandex_accounts():
         st.session_state.ya_error = f"Запрос не удался: {e}"
         return []
 
-def get_campaign_url(source, campaign_id):
+def get_campaign_url(source, campaign_id, login=""):
     """Прямая ссылка на кампанию в кабинете. NAMECTUS не управляет — перенаправляет."""
     if source == "yandex":
-        return f"https://direct.yandex.ru/registered/campaign/{campaign_id}"
+        if login:
+            return f"https://direct.yandex.ru/dna/campaigns-edit?ulogin={login}&campaigns-ids={campaign_id}"
+        return "https://direct.yandex.ru/registered/campaigns"
     if source == "google":
         return "https://ads.google.com/aw/campaigns"
     return "https://adsmanager.facebook.com"
@@ -381,8 +352,7 @@ def fetch_yandex_scan():
                     continue
                 cid = rec.get("CampaignId", "")
                 rows.append({
-                    "project": project, "source": "yandex", "campaign_id": str(cid),
-                    "campaign": names.get(int(cid), cid) if str(cid).isdigit() else cid,
+                    "project": project, "source": "yandex", "campaign_id": str(cid), "login": login,                    "campaign": names.get(int(cid), cid) if str(cid).isdigit() else cid,
                     "date": rec.get("Date", ""), "impressions": int(float(rec.get("Impressions", 0) or 0)),
                     "clicks": int(float(rec.get("Clicks", 0) or 0)), "cost": float(rec.get("Cost", 0) or 0) / 1_000_000,
                     "conversions": float(rec.get("Conversions", 0) or 0),
@@ -423,9 +393,20 @@ def analyze_campaigns(df: pd.DataFrame):
         prev_ctr = prev_df["clicks"].sum() / prev_df["impressions"].sum() if prev_df["impressions"].sum() > 0 else 0
         cur_ctr = cur_df["clicks"].sum() / cur_df["impressions"].sum() if cur_df["impressions"].sum() > 0 else 0
 
-        base = {"label": f"{project} / {campaign}", "source": source, "campaign_id": campaign_id,
-                "project": project, "campaign": campaign}
+        # Рублёвый эквивалент проблемы — для сводки «предотвращённый слив»
+        waste = float(total_spent) if (total_conv == 0 and total_spent > 0) else 0.0
+        cpa_overpay = max(0.0, cur_cpa - prev_cpa) * cur_conv if prev_cpa > 0 else 0.0
+        cur_imp = cur_df["impressions"].sum()
+        cur_clk = cur_df["clicks"].sum()
+        cur_spend = cur_df["cost"].sum()
+        cpc = cur_spend / cur_clk if cur_clk > 0 else 0
+        ctr_loss = max(0.0, prev_ctr - cur_ctr) * cur_imp * cpc if prev_ctr > 0 else 0.0
+        overpay = round(waste + cpa_overpay + ctr_loss, 2)
 
+        camp_login = str(camp_df["login"].iloc[0]) if "login" in camp_df.columns else ""
+        base = {"label": f"{project} / {campaign}", "source": source, "campaign_id": campaign_id,
+                "project": project, "campaign": campaign, "spend": round(float(total_spent), 2),
+                "days": int(total_days), "overpay": overpay, "login": camp_login}
         if total_days < 7:
             results.append({**base, "status": "data_accumulation",
                             "problem": f"Доступно только {total_days} дн. данных", "actions": ["Наблюдать"]})
@@ -648,28 +629,6 @@ if "invoices" not in st.session_state: st.session_state.invoices = []
 if "scan_archive" not in st.session_state: st.session_state.scan_archive = []
 if "projects" not in st.session_state: st.session_state.projects = []
 
-# Вспомогательные функции
-def get_total_limit():
-    if st.session_state.user_tariff == "trial": return 1
-    if not st.session_state.user_tariff: return 0
-    return TARIFFS[st.session_state.user_tariff]["limit"] + st.session_state.extra_accounts
-
-# =========================
-# ОБРАБОТКА ВОЗВРАТА С ЯНДЕКСА (до экрана входа!)
-# =========================
-query_params = st.query_params
-if "code" in query_params and "yandex_token" not in st.session_state:
-    token = exchange_code_for_token(query_params["code"])
-    if token:
-        st.session_state["yandex_token"] = token
-        st.session_state.oauth_ok = True
-        returned_email = query_params.get("state", "")
-        if returned_email:
-            st.session_state.user_email = returned_email
-            st.session_state.auth_passed = True
-        st.query_params.clear()
-        st.rerun()
-
 # =========================
 # ОБРАБОТКА ВОЗВРАТА С ЯНДЕКСА (до экрана входа!)
 # =========================
@@ -766,13 +725,36 @@ if not st.session_state.auth_passed:
 
             if st.button(t("login_btn"), type="primary", use_container_width=True):
                 if email and password:
-                    st.session_state.user_email = email
-                    st.session_state.auth_passed = True
-                    st.rerun()
+                    if sb:
+                        try:
+                            user_data = sb.table("users").select("*").eq("email", email).execute()
+                            if not user_data.data:
+                                st.error("Пользователь не найден. Зарегистрируйтесь.")
+                            else:
+                                user = user_data.data[0]
+                                if verify_password(password, user.get("password", "")):
+                                    st.session_state.user_email = email
+                                    st.session_state.auth_passed = True
+                                    st.rerun()
+                                else:
+                                    st.error("Неверный пароль")
+                        except Exception as e:
+                            st.error(f"Ошибка входа: {e}")
+                    else:
+                        st.warning("База данных недоступна")
                 else:
                     st.warning(t("fill_all_fields"))
 
         with tab_reg:
+            if not st.session_state.get("disclaimer_accepted"):
+                with st.container(border=True):
+                    st.markdown("### 🔒 Как работает NAMECTUS")
+                    st.markdown("Мы **не меняем** ваши настройки, **не управляем** бюджетами и **не передаём** данные третьим лицам. Вы предоставляете NAMECTUS права **только на чтение** ваших рекламных кабинетов.")
+                    if st.checkbox("Я понял(а) и согласен(на)", key="disclaimer_cb"):
+                        st.session_state.disclaimer_accepted = True
+                        st.rerun()
+                st.stop()
+
             # Поля ввода
             reg_email = st.text_input(t("email_phone"), key="reg_email_new")
             reg_pass = st.text_input(t("password"), type="password", key="reg_pass_new")
@@ -833,6 +815,20 @@ if not st.session_state.auth_passed:
                 elif not is_strong:
                     st.error("Пароль слишком слабый!")
                 else:
+                    # Сохраняем пользователя с хэшированным паролем
+                    if sb:
+                        try:
+                            sb.table("users").upsert({
+                                "email": reg_email,
+                                "password": hash_password(reg_pass),
+                                "tariff": "trial",
+                                "sub_end": None,
+                                "trial_end": None,
+                                "extra_accounts": 0,
+                                "currency": "€",
+                            }).execute()
+                        except Exception as e:
+                            print(f"Ошибка сохранения: {e}")
                     st.session_state.user_email = reg_email
                     st.session_state.auth_passed = True
                     st.rerun()
@@ -1170,6 +1166,8 @@ else:
 
 # 1. СНАЧАЛА: сканирование (компактная зелёная кнопка) или напоминалка
 if current_cabs > 0:
+    if st.session_state.pop("just_connected", False):
+        st.success("✅ Кабинет подключён! Теперь NAMECTUS будет мониторить его автоматически.")
     if st.button("🔍 Сканировать", type="primary", key="btn_scan_main"):
         with st.spinner("🔄 Читаем реальные данные кабинетов..."):
             try:
@@ -1187,7 +1185,7 @@ if current_cabs > 0:
                     else:
                         crit = [r for r in results if r["status"] == "critical"]
                         warn = [r for r in results if r["status"] == "warning"]
-                        drain = sum(r.get("spend", 0) for r in crit)
+                        drain = sum(r.get("overpay", 0) for r in results if r["status"] in ("critical", "warning"))
                         hours = len(results) * 15 / 60
                         st.session_state.scan_summary = {
                             "cabs": int(df["project"].nunique()),
@@ -1233,7 +1231,7 @@ if st.session_state.get("scan_results"):
                         st.markdown(f"**Период:** последние {r.get('days', 14)} дн. • **Расход кампании:** {r.get('spend', 0)} ₽")
                         st.markdown("**Что проверить:**")
                         st.markdown("• Формы заявки на сайте\n• Поисковые запросы\n• Объявления и креативы")
-                        url = get_campaign_url(r["source"], r["campaign_id"])
+                        url = get_campaign_url(r["source"], r["campaign_id"], r.get("login", ""))
                         st.markdown(f"🔗 [Открыть кампанию в кабинете]({url})")
                         c1, c2, c3 = st.columns(3)
                         with c1:
@@ -1385,6 +1383,7 @@ def show_yandex_dialog():
             })
         st.session_state.show_yandex_dialog = False
         st.session_state.source_ready = f"Подключено кабинетов: {len(picked)} → проект «{pname}»!"
+        st.session_state.just_connected = True
         db_log(st.session_state.user_email, "Подключены кабинеты", f"{len(picked)} → {pname}")
         st.rerun()
 
@@ -1408,7 +1407,6 @@ def show_limit_dialog():
     PR = {
         "trial":        {"price": 0,   "extra": 0,  "unit": "источник"},
         "business":     {"price": 20,  "extra": 10, "unit": "источник"},
-        "agency_start": {"price": 50,  "extra": 5,  "unit": "проект"},
         "agency_start": {"price": 50,  "extra": 5,  "unit": "проект"},
         "agency":       {"price": 150, "extra": 5,  "unit": "проект"},
         "agency_pro":   {"price": 300, "extra": 5,  "unit": "проект"},
@@ -1724,7 +1722,6 @@ elif st.session_state.nav_screen == "problem_detail":
     st.markdown("#### 💡 Что проверить")
     st.markdown("""
     • Формы заявки на сайте
-    • Посадочную страницу
     • Поисковые запросы
     • Объявления и креативы
     """)
@@ -1736,7 +1733,7 @@ elif st.session_state.nav_screen == "problem_detail":
     
     with col1:
         if st.button("🔗 Перейти в кабинет", use_container_width=True):
-            url = get_campaign_url(res["source"], res["campaign_id"])
+            url = get_campaign_url(res["source"], res["campaign_id"], res.get("login", ""))
             st.markdown(f'<a href="{url}" target="_blank">Открыть в новой вкладке</a>', unsafe_allow_html=True)
             st.session_state.history[res["label"]] = {"action": "Перешёл в кабинет", "date": datetime.now().strftime("%d.%m.%Y %H:%M")}
             save_history(st.session_state.history)
