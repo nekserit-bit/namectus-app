@@ -720,10 +720,12 @@ if not st.session_state.auth_passed:
         tab_login, tab_reg = st.tabs([t("login"), t("register")])
 
         with tab_login:
-            email = st.text_input(t("email_phone"), key="login_email_tz1")
-            password = st.text_input(t("password"), type="password", key="login_pass_tz1")
+            with st.form("login_form"):
+                email = st.text_input(t("email_phone"), key="login_email_tz1")
+                password = st.text_input(t("password"), type="password", key="login_pass_tz1")
+                submitted = st.form_submit_button(t("login_btn"), type="primary", use_container_width=True)
 
-            if st.button(t("login_btn"), type="primary", use_container_width=True):
+            if submitted:
                 if email and password:
                     if sb:
                         try:
@@ -946,9 +948,7 @@ if st.session_state.user_tariff is None:
         agree = st.checkbox("Я ознакомился(ась) с условиями и согласен(на)", key="agree_terms_dlg")
         if agree:
             if st.button("💳 Получить счёт и активировать", type="primary", use_container_width=True, key="btn_activate_dlg"):
-                make_invoice(k)
-                st.session_state.user_tariff = k
-                st.session_state.sub_end = datetime.now() + timedelta(days=30)
+                make_invoice(k, action="switch", action_data={"tariff": k})
                 st.session_state.terms_tariff = None
                 st.session_state.invoice_ready = True
                 st.rerun()
