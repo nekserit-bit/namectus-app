@@ -56,7 +56,10 @@ def db_load_all(email):
         u = sb.table("users").select("*").eq("email", email).execute()
         if u.data:
             r = u.data[0]
-            st.session_state.user_tariff = r.get("tariff") or "trial"
+            tariff = r.get("tariff")
+            if tariff == "trial" and not r.get("trial_end"):
+                tariff = None  # триал не стартовал — показываем онбординг
+            st.session_state.user_tariff = tariff
             st.session_state.sub_end = _safe_parse(r.get("sub_end"))
             st.session_state.trial_end = _safe_parse(r.get("trial_end"))
             st.session_state.extra_accounts = r.get("extra_accounts") or 0
@@ -823,7 +826,7 @@ if not st.session_state.auth_passed:
                             sb.table("users").upsert({
                                 "email": reg_email,
                                 "password": hash_password(reg_pass),
-                                "tariff": "trial",
+                                "tariff": None,
                                 "sub_end": None,
                                 "trial_end": None,
                                 "extra_accounts": 0,
