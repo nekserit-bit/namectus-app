@@ -69,9 +69,18 @@ def db_load_all(email):
         a = sb.table("accounts").select("*").eq("email", email).execute()
         st.session_state.connected_accounts = [{"platform": x["platform"], "name": x["name"], "project": x.get("project", ""), "login": x.get("login", ""), "date": datetime.now()} for x in a.data]
         i = sb.table("invoices").select("*").eq("email", email).execute()
+        # Старая таблица (один токен) — для обратной совместимости
         tk = sb.table("tokens").select("*").eq("email", email).execute()
         if tk.data:
             st.session_state.yandex_token = tk.data[0].get("yandex_token") or None
+        # Новая таблица (много токенов по логинам)
+        yt = sb.table("yandex_tokens").select("*").eq("email", email).execute()
+        st.session_state.yandex_tokens = {}
+        for row in yt.data:
+            login = row.get("yandex_login")
+            token = row.get("token")
+            if login and token:
+                st.session_state.yandex_tokens[login] = token
         st.session_state.invoices = [{"num": x["num"], "date": x["date"], "sum": x["sum"], "status": x.get("status", "pending"), "action": x.get("action"), "action_data": x.get("action_data") or {}, "html": x["html"]} for x in i.data]
     except Exception as e:
         print(f"Ошибка загрузки из базы: {e}")
@@ -140,10 +149,12 @@ if "auth_passed" not in st.session_state: st.session_state.auth_passed = False
 
 # Вспомогательные функции для тарифов
 def get_total_limit():
-    if st.session_state.user_tariff == "trial": return 5  # бета на 5 проектов
-    if not st.session_state.user_tariff: return 0
+    """Лимит — это количество ПРОЕКТов NAMECTUS, не кабинетов."""
+    if st.session_state.user_tariff == "trial":
+        return 5  # бета на 5 проектов
+    if not st.session_state.user_tariff:
+        return 0
     return TARIFFS[st.session_state.user_tariff]["limit"] + st.session_state.extra_accounts
-
 
 # =========================
 # УПРАВЛЕНИЕ ПРОЕКТАМИ (КАТАЛОГ)
@@ -215,65 +226,65 @@ def get_yandex_auth_url():
             f"&state={state}")
 
 def get_yandex_accounts():
-    """Список кабинетов Яндекса: у агентства — клиенты, иначе — свой кабинет."""
-    token = st.session_state.get("yandex_token")
-    if not token:
+    """Список кабинетов Яндекса по ВСЕМ подключённым токенам пользователя."""
+    tokens = dict(st.session_state.get("yandex_tokens") or {})
+    legacy = st.session_state.get("yandex_token")
+    if legacy and legacy not in tokens.values():
+        tokens["__legacy__"] = legacy
+    if not tokens:
         st.session_state.ya_error = "Токена доступа нет."
         return []
-    headers = {"Authorization": f"Bearer {token}", "Accept-Language": "ru"}
-    try:
-        # 1) Агентство: список клиентов (адрес — маленькими буквами!)
-        r = requests.post(
-            "https://api.direct.yandex.ru/json/v5/agencyclients",
-            headers=headers,
-            json={"method": "get", "params": {
-                "SelectionCriteria": {},
-                "FieldNames": ["Login", "ClientInfo", "ClientId", "Archived"]
-            }}
-        )
-        data = r.json()
-        if "error" in data:
-            st.session_state.ya_agency_error = f"agencyclients: {data.get('error')} / {data.get('error_description', '')}"
-        else:
-            st.session_state.ya_agency_error = ""
-            res = data.get("result", {})
-            clients = res.get("Clients") or res.get("clients") or []
-            accounts = []
-            for c in clients:
-                name = c.get("ClientInfo", "") or c.get("Login", "")
-                if c.get("Archived") == "YES":
-                    name += " (архив)"
-                accounts.append({"login": c.get("Login", ""), "name": name})
-            if accounts:
-                accounts.sort(key=lambda x: str(x.get("name", "")).lower())
-                st.session_state.ya_error = ""
-                return accounts
-        # 2) Не агентство: показываем собственный кабинет
-        r2 = requests.post(
-            "https://api.direct.yandex.ru/json/v5/clients",
-            headers=headers,
-            json={"method": "get", "params": {"FieldNames": ["Login", "ClientInfo"]}}
-        )
-        data2 = r2.json()
-        if "error" in data2:
-            st.session_state.ya_error = f"Яндекс говорит: {data2.get('error')} / {data2.get('error_description', '')}"
-            return []
-        res2 = data2.get("result", {})
-        own = res2.get("Clients") or res2.get("clients") or []
-        accounts = []
-        for c in own:
-            info = c.get("ClientInfo")
-            name = info if isinstance(info, str) else c.get("Login", "")
-            accounts.append({"login": c.get("Login", ""), "name": name or c.get("Login", "")})
-        if not accounts:
-            st.session_state.ya_error = f"Яндекс вернул пустой список. Сырой ответ: {str(data2)[:400]}"
-        else:
-            st.session_state.ya_error = ""
-        accounts.sort(key=lambda x: str(x.get("name", "")).lower())
-        return accounts
-    except Exception as e:
-        st.session_state.ya_error = f"Запрос не удался: {e}"
+    all_accounts = {}
+    errors = []
+    for key, token in tokens.items():
+        headers = {"Authorization": f"Bearer {token}", "Accept-Language": "ru"}
+        try:
+            # 1) Агентство: список клиентов этого токена
+            r = requests.post(
+                "https://api.direct.yandex.ru/json/v5/agencyclients",
+                headers=headers,
+                json={"method": "get", "params": {
+                    "SelectionCriteria": {},
+                    "FieldNames": ["Login", "ClientInfo", "ClientId", "Archived"]
+                }}
+            )
+            data = r.json()
+            got = []
+            if "error" not in data:
+                res = data.get("result", {})
+                clients = res.get("Clients") or res.get("clients") or []
+                for c in clients:
+                    name = c.get("ClientInfo", "") or c.get("Login", "")
+                    if c.get("Archived") == "YES":
+                        name += " (архив)"
+                    got.append({"login": c.get("Login", ""), "name": name})
+            else:
+                # 2) Не агентство: собственный кабинет этого токена
+                r2 = requests.post(
+                    "https://api.direct.yandex.ru/json/v5/clients",
+                    headers=headers,
+                    json={"method": "get", "params": {"FieldNames": ["Login", "ClientInfo"]}}
+                )
+                data2 = r2.json()
+                if "error" in data2:
+                    errors.append(f"{key}: {data2.get('error')}")
+                    continue
+                res2 = data2.get("result", {})
+                own = res2.get("Clients") or res2.get("clients") or []
+                for c in own:
+                    info = c.get("ClientInfo")
+                    name = info if isinstance(info, str) else c.get("Login", "")
+                    got.append({"login": c.get("Login", ""), "name": name or c.get("Login", "")})
+            for acc in got:
+                if acc.get("login"):
+                    all_accounts[acc["login"]] = acc
+        except Exception as e:
+            errors.append(f"{key}: {e}")
+    if not all_accounts:
+        st.session_state.ya_error = "; ".join(errors) if errors else "Яндекс вернул пустой список кабинетов."
         return []
+    st.session_state.ya_error = ""
+    return sorted(all_accounts.values(), key=lambda x: str(x.get("name", "")).lower())
 
 def get_campaign_url(source, campaign_id, login=""):
     """Прямая ссылка на кампанию в кабинете. NAMECTUS не управляет — перенаправляет."""
@@ -292,10 +303,11 @@ def fetch_yandex_scan():
     """Реальные данные: кампании + статистика за 14 дней по подключённым кабинетам."""
     import time
     from datetime import date, timedelta
-    token = st.session_state.get("yandex_token")
+    tokens = st.session_state.get("yandex_tokens") or {}
+    legacy_token = st.session_state.get("yandex_token")
     rows = []
     errors = []
-    if not token:
+    if not tokens and not legacy_token:
         return pd.DataFrame(rows), ["Нет токена Яндекса: переподключите кабинет."]
     today = date.today()
     d_from = (today - timedelta(days=14)).isoformat()
@@ -305,6 +317,11 @@ def fetch_yandex_scan():
             continue
         login = acc["login"]
         project = acc.get("project", login)
+        # Берём токен, соответствующий этому логину (с fallback на старый)
+        token = tokens.get(login) or legacy_token
+        if not token:
+            errors.append(f"{login}: нет токена для этого логина")
+            continue
         hdr = {"Authorization": f"Bearer {token}", "Accept-Language": "ru",
                "Client-Login": login, "returnMoneyInMicros": "NO"}
         try:
@@ -645,9 +662,40 @@ if "code" in query_params and "yandex_token" not in st.session_state:
         if returned_email:
             st.session_state.user_email = returned_email
             st.session_state.auth_passed = True
+        
+        # Узнаём логин, под которым прошёл OAuth
+        new_login = None
+        try:
+            headers = {"Authorization": f"Bearer {token}", "Accept-Language": "ru"}
+            r = requests.post(
+                "https://api.direct.yandex.ru/json/v5/clients",
+                headers=headers,
+                json={"method": "get", "params": {"FieldNames": ["Login"]}}
+            )
+            data = r.json()
+            if "result" in data:
+                clients = data["result"].get("Clients") or data["result"].get("clients") or []
+                if clients:
+                    new_login = clients[0].get("Login")
+        except Exception as e:
+            print(f"Не удалось узнать логин: {e}")
+        
+        # Сохраняем в новую таблицу, если узнали логин и есть email
+        if new_login and returned_email and sb:
+            try:
+                sb.table("yandex_tokens").upsert({
+                    "email": returned_email,
+                    "yandex_login": new_login,
+                    "token": token,
+                }).execute()
+                if "yandex_tokens" not in st.session_state:
+                    st.session_state.yandex_tokens = {}
+                st.session_state.yandex_tokens[new_login] = token
+            except Exception as e:
+                print(f"Не удалось сохранить токен: {e}")
+        
         st.query_params.clear()
         st.rerun()
-
 # Авто-загрузка хозяйства вернувшегося пользователя из базы
 if sb and st.session_state.get("user_email") and not st.session_state.get("db_loaded"):
     db_load_all(st.session_state.user_email)
@@ -1371,9 +1419,12 @@ def show_yandex_dialog():
         if not project_name or not project_name.strip():
             st.error("Введите название проекта.")
             return
-        room = total_limit - current_cabs
-        if len(picked) > room:
-            st.error(f"Тариф позволяет добавить ещё {room}, а выбрано {len(picked)}. Снимите лишние или расширьте тариф.")
+        # Проверяем лимит по проектам, а не по кабинетам
+        current_projects = len(st.session_state.projects)
+        pname = project_name.strip()
+        is_new_project = not any(p["name"] == pname for p in st.session_state.projects)
+        if is_new_project and current_projects >= total_limit:
+            st.error(f"Лимит тарифа исчерпан: создано {current_projects} проектов из {total_limit}. Создать ещё один нельзя — расширьте тариф.")
             return
         pname = project_name.strip()
         if not any(p["name"] == pname for p in st.session_state.projects):
@@ -1469,9 +1520,10 @@ if st.session_state.get("invoice_ready") and st.session_state.invoices:
 st.divider()
 
 # 3. В КОНЦЕ: справочная информация
-st.markdown(f"Подключено {unit_name}ов: {current_cabs} из {total_limit}")
-st.progress(min(current_cabs / total_limit, 1.0) if total_limit > 0 else 0)
-# Сохраняем всё в базу при каждом действии
+# Показываем лимит по проектам
+current_projects = len(st.session_state.projects)
+st.markdown(f"📁 Проектов: {current_projects} из {total_limit}  •  🔌 Кабинетов: {current_cabs}")
+st.progress(min(current_projects / total_limit, 1.0) if total_limit > 0 else 0)# Сохраняем всё в базу при каждом действии
 db_sync_all()
 
 # =========================
