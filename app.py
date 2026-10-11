@@ -6,6 +6,10 @@ from datetime import datetime, timedelta
 import requests
 import secrets
 import hashlib
+import resend
+
+resend.api_key = st.secrets.get("RESEND_API_KEY", "")
+
 
 
 def hash_password(password: str) -> str:
@@ -216,6 +220,33 @@ def exchange_code_for_token(code):
     except Exception as e:
         st.error(f"Ошибка: {e}")
     return None
+
+def send_verification_code(email, code):
+    """Отправляет код подтверждения на почту через Resend."""
+    try:
+        resend.Emails.send({
+            "from": "NAMECTUS <onboarding@resend.dev>",
+            "to": email,
+            "subject": f"Код подтверждения: {code}",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2>NAMECTUS — подтверждение регистрации</h2>
+                <p>Ваш код подтверждения:</p>
+                <h1 style="font-size: 32px; color: #2e7d32;">{code}</h1>
+                <p>Введите этот код в поле "Код из сообщения" для завершения регистрации.</p>
+                <p style="color: #666; font-size: 12px;">Если вы не запрашивали регистрацию в NAMECTUS, просто проигнорируйте это письмо.</p>
+            </div>
+            """
+        })
+        return True
+    except Exception as e:
+        print(f"Ошибка отправки письма: {e}")
+        return False
+
+def generate_verification_code():
+    """Генерирует 6-значный код подтверждения."""
+    import random
+    return str(random.randint(100000, 999999))
 
 def get_yandex_auth_url():
     from urllib.parse import quote
@@ -844,18 +875,24 @@ if not st.session_state.auth_passed:
                 st.warning("⚠️ В пароле русские буквы! Переключи раскладку на английскую — пароль пишется только латиницей.")
 
             # 2. Кнопка "Получить код"
-            if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
-                if not reg_email or not reg_pass or not reg_pass_confirm:
-                    st.warning(t("fill_all_fields"))
-                elif "@" not in reg_email:
-                    st.error("Пока регистрация только по почте. Вход по телефону появится позже.")
-                elif reg_pass != reg_pass_confirm:
-                    st.error("Пароли не совпадают! Проверьте поле 'Подтвердите пароль'.")
-                elif not is_strong:
-                    st.error("Пароль слишком слабый! Выполните все требования выше.")
-                else:
-                    st.success(t("code_sent").format(email=reg_email))
-
+if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
+    if not reg_email or not reg_pass or not reg_pass_confirm:
+        st.warning(t("fill_all_fields"))
+    elif "@" not in reg_email:
+        st.error("Пока регистрация только по почте. Вход по телефону появится позже.")
+    elif reg_pass != reg_pass_confirm:
+        st.error("Пароли не совпадают! Проверьте поле 'Подтвердите пароль'.")
+    elif not is_strong:
+        st.error("Пароль слишком слабый! Выполните все требования выше.")
+    else:
+        # Генерируем и отправляем реальный код
+        code = generate_verification_code()
+        if send_verification_code(reg_email, code):
+            st.session_state.verification_code = code
+            st.session_state.verification_email = reg_email
+            st.success(f"Код отправлен на {reg_email}. Проверьте почту.")
+        else:
+            st.error("Не удалось отправить код. Попробуйте позже.")
             # 3. Поле для кода
             reg_code = st.text_input(t("code_from_message"), key="reg_code_new")
             
@@ -865,8 +902,10 @@ if not st.session_state.auth_passed:
                     st.warning(t("fill_all_fields"))
                 elif "@" not in reg_email:
                     st.error("Пока регистрация только по почте. Вход по телефону появится позже.")
-                elif reg_code != "1234":
-                    st.error("Неверный код! Попробуйте 1234.")
+                elif reg_email != st.session_state.get("verification_email"):
+                    st.error("Email не совпадает с тем, на который был отправлен код.")
+                elif reg_code != st.session_state.get("verification_code"):
+                    st.error("Неверный код! Проверьте письмо.")
                 elif reg_pass != reg_pass_confirm:
                     st.error("Пароли не совпадают!")
                 elif not is_strong:
@@ -889,7 +928,6 @@ if not st.session_state.auth_passed:
                     st.session_state.user_email = reg_email
                     st.session_state.auth_passed = True
                     st.rerun()
-
     st.stop()
 
 # =========================
