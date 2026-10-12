@@ -875,25 +875,26 @@ if not st.session_state.auth_passed:
                 st.warning("⚠️ В пароле русские буквы! Переключи раскладку на английскую — пароль пишется только латиницей.")
 
             # 2. Кнопка "Получить код"
-if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
-    if not reg_email or not reg_pass or not reg_pass_confirm:
-        st.warning(t("fill_all_fields"))
-    elif "@" not in reg_email:
-        st.error("Пока регистрация только по почте. Вход по телефону появится позже.")
-    elif reg_pass != reg_pass_confirm:
-        st.error("Пароли не совпадают! Проверьте поле 'Подтвердите пароль'.")
-    elif not is_strong:
-        st.error("Пароль слишком слабый! Выполните все требования выше.")
-    else:
-        # Генерируем и отправляем реальный код
-        code = generate_verification_code()
-        if send_verification_code(reg_email, code):
-            st.session_state.verification_code = code
-            st.session_state.verification_email = reg_email
-            st.success(f"Код отправлен на {reg_email}. Проверьте почту.")
-        else:
-            st.error("Не удалось отправить код. Попробуйте позже.")
-            # 3. Поле для кода
+            if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
+                if not reg_email or not reg_pass or not reg_pass_confirm:
+                    st.warning(t("fill_all_fields"))
+                elif "@" not in reg_email:
+                    st.error("Пока регистрация только по почте. Вход по телефону появится позже.")
+                elif reg_pass != reg_pass_confirm:
+                    st.error("Пароли не совпадают! Проверьте поле 'Подтвердите пароль'.")
+                elif not is_strong:
+                    st.error("Пароль слишком слабый! Выполните все требования выше.")
+                else:
+                    # Генерируем и отправляем реальный код
+                    code = generate_verification_code()
+                    if send_verification_code(reg_email, code):
+                        st.session_state.verification_code = code
+                        st.session_state.verification_email = reg_email
+                        st.success(f"Код отправлен на {reg_email}. Проверьте почту.")
+                    else:
+                        st.error("Не удалось отправить код. Попробуйте позже.")
+
+            # 3. Поле для кода (ВСЕГДА показывается)
             reg_code = st.text_input(t("code_from_message"), key="reg_code_new")
             
             # 4. Кнопка "Зарегистрироваться"
@@ -929,7 +930,6 @@ if st.button(t("get_code"), use_container_width=True, key="btn_get_code_new"):
                     st.session_state.auth_passed = True
                     st.rerun()
     st.stop()
-
 # =========================
 # ЭКРАН 2: ОНБОРДИНГ (ВЫБОР ТАРИФА)
 # =========================
