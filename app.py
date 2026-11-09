@@ -604,7 +604,11 @@ def t(key):
 # НОВЫЙ ВХОДНОЙ ТАМБУР (SaaS-архитектура)
 # =========================
 
-# 1. Структура тарифов (из твоего документа)
+# Бета-доступ: сколько тестеров берём и на сколько дней
+BETA_LIMIT = 50   # мест в бете 
+BETA_DAYS = 30    # дней бета-доступа
+
+# 1. Структура тарифов 
 TARIFFS = {
     "business": {"name": "Бизнес-клиент", "limit": 1, "price": 2000, "extra_price": 1000, "max_extra": None},
     "agency_start": {"name": "Agency Start", "limit": 5, "price": 5000, "extra_price": 500, "max_extra": 18},
@@ -773,7 +777,7 @@ if not st.session_state.auth_passed:
         st.image("logo.png", width=60)
 
     with col_title:
-        st.markdown("<h3 style='margin-top: 12px;'>NAMECTUS v1.0</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 12px;'>NAMECTUS | Рекламный кабинет V1.0</h3>", unsafe_allow_html=True)
 
     with col_lang:
         current_idx = 0 if st.session_state.user_language == "ru" else (1 if st.session_state.user_language == "kz" else 2)
@@ -952,7 +956,7 @@ if st.session_state.user_tariff is None:
     with h1:
         st.image("logo.png", width=50)
     with h2:
-        st.markdown("<h3 style='margin-top: 8px;'>NAMECTUS v1.0</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 8px;'>NAMECTUS | Рекламный кабинет V1.0</h3>", unsafe_allow_html=True)
     with h3:
         components.html("""
         <div id='nc_clock' style='color:#9aa0a6; font-size:13px; text-align:right; padding-top:12px;'></div>
@@ -1199,7 +1203,7 @@ h1, h2, h3 = st.columns([0.5, 4, 2])
 with h1:
     st.image("logo.png", width=50)
 with h2:
-    st.markdown("<h3 style='margin-top: 8px;'>NAMECTUS v1.0</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top: 8px;'>NAMECTUS | Рекламный кабинет V1.0</h3>", unsafe_allow_html=True)
 with h3:
     components.html("""
     <div id='nc_clock' style='color:#9aa0a6; font-size:13px; text-align:right; padding-top:12px;'></div>
