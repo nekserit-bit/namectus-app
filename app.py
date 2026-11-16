@@ -607,6 +607,7 @@ def t(key):
 # Бета-доступ: сколько тестеров берём и на сколько дней
 BETA_LIMIT = 50   # мест в бете 
 BETA_DAYS = 30    # дней бета-доступа
+BETA_SCANS_PER_DAY = 5   # сканов в сутки для бета-тестеров
 
 # 1. Структура тарифов 
 TARIFFS = {
@@ -1009,13 +1010,13 @@ if st.session_state.user_tariff is None:
 
     with col_trial:
         st.markdown("###  Попробовать бесплатно")
-        st.caption("10 дней • 1 кабинет")
+        st.caption(f"{BETA_DAYS} дней • до 5 проектов")
         # Делим колонку пополам: кнопка займёт половину ширины col_trial
         btn_col1, btn_col2 = st.columns([1, 1])
         with btn_col1:
             if st.button("Начать бесплатный период", type="primary", use_container_width=True, key="btn_trial_green"):
                 st.session_state.user_tariff = "trial"
-                st.session_state.trial_end = datetime.now() + timedelta(days=10)
+                st.session_state.trial_end = datetime.now() + timedelta(days=BETA_DAYS)
                 st.rerun()
 
     with col_paid:
@@ -1258,6 +1259,10 @@ with col_info2:
 with col_info3:
     days = get_days_left()
     st.markdown(f"⏳ Осталось: {days} дней")
+    if st.session_state.user_tariff == "trial":
+        end = st.session_state.trial_end
+        if end:
+            st.caption(f"🧪 Бета-доступ до {end.strftime('%d.%m.%Y')}")
 if st.session_state.user_tariff == "trial" and 0 < days <= 2:
     st.warning(f"⏳ Пробный период закончится через {days} дн.! Выберите платный тариф, чтобы NAMECTUS продолжил следить за рекламой: боковая панель → «Продлить или сменить тариф».")
 
@@ -1274,6 +1279,8 @@ if "selected_campaign" not in st.session_state:
     st.session_state.selected_campaign = None
 if "scan_results" not in st.session_state:
     st.session_state.scan_results = None
+if "scans_today" not in st.session_state:
+    st.session_state.scans_today = {"date": None, "count": 0}
 if "history" not in st.session_state:
     st.session_state.history = load_history()
 
@@ -1294,9 +1301,15 @@ if current_cabs > 0:
     if st.session_state.pop("just_connected", False):
         st.success("✅ Кабинет подключён! Теперь NAMECTUS будет мониторить его автоматически.")
     if st.button("🔍 Сканировать", type="primary", key="btn_scan_main"):
+
         has_access, msg = check_access()
+        today = datetime.now().date()
+        if st.session_state.scans_today.get("date") != today:
+            st.session_state.scans_today = {"date": today, "count": 0}
         if not has_access:
             st.error(f"⏳ {msg}. Продлите подписку в боковой панели → «Продлить или сменить тариф».")
+        elif st.session_state.user_tariff == "trial" and st.session_state.scans_today["count"] >= BETA_SCANS_PER_DAY:
+            st.error(f"⏳ Лимит сканов на сегодня исчерпан ({BETA_SCANS_PER_DAY} в сутки). Завтра лимит обновится.")
         else:
             with st.spinner("🔄 Читаем реальные данные кабинетов..."):
                 try:
@@ -1325,9 +1338,10 @@ if current_cabs > 0:
                                 "hours": int(hours),
                                 "minutes": int(round((hours - int(hours)) * 60)),
                             }
-                            db_log(st.session_state.user_email, "Сканирование", f"найдено результатов: {len(results)}")
-                            st.session_state.nav_screen = "scan"
-                            st.rerun()
+                        db_log(st.session_state.user_email, "Сканирование", f"найдено результатов: {len(results)}")
+                        st.session_state.scans_today["count"] += 1
+                        st.session_state.nav_screen = "scan"
+                        st.rerun()
                 except Exception as e:
                     st.error(f"Ошибка: {e}")
 else:
