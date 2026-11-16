@@ -637,6 +637,13 @@ def make_invoice(tariff_key, amount_eur=None, note="", action=None, action_data=
     rate = RATES.get(cur, 1)
     amount_cur = int(round(amount * rate, -1)) if cur in ("₽", "₸") else round(amount * rate)
     t_name = TARIFFS[tariff_key]["name"] if tariff_key in TARIFFS else tariff_key
+    rf_note = ""
+    if cur == "₽":
+        rf_note = ("<p style='font-size:12px;color:#555'><b>Покупателям из России:</b> для оплаты услуг казахстанскому юридическому лицу "
+                   "подходят российские банки, не включённые в блокирующие санкционные списки (SDN США и регламенты ЕС): "
+                   "ОТП Банк, Райффайзенбанк, ЮниКредит Банк, Кредит Европа Банк, Азиатско-Тихоокеанский Банк (АТБ), ББР Банк, БКС Банк, "
+                   "а также региональные и нишевые банки (Инбанк, Банк Далена, Владбизнесбанк, Мурманский расчётный банк, Первый Инвестиционный Банк). "
+                   "Перечень актуален на дату выставления счёта.</p>")
     html = f"""<html><head><meta charset="utf-8"><title>Счёт {num}</title>
 <style>body{{font-family:Arial;padding:40px;color:#222}}h1{{font-size:20px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #999;padding:8px;text-align:left}}</style>
 </head><body>
@@ -647,7 +654,16 @@ def make_invoice(tariff_key, amount_eur=None, note="", action=None, action_data=
 <tr><td>{note or ('Тариф «' + t_name + '», подписка 30 дней')}</td><td>{amount} € ({amount_cur} {cur})</td></tr>
 </table>
 <p><b>Итого: {amount} € ({amount_cur} {cur})</b></p>
-<p>Продавец: NAMECTUS. Реквизиты для оплаты будут указаны после регистрации юрлица (ТОО Казахстан / самозанятость РФ).</p>
+<p style="font-size:12px;color:#555">Оплата зачисляется в тенге (KZT) на счёт продавца по курсу банка на день зачисления.</p>
+<p><b>Продавец:</b> Товарищество с ограниченной ответственностью &quot;NexserIT&quot;</p>
+<p><b>БИН:</b> 261040009781</p>
+<p><b>Юр. адрес:</b> 010000, Республика Казахстан, г. Астана, район Сарайшык, ж.м. Юго-Восток (правая сторона), ул. Тайказан, д. 38</p>
+<p><b>Банк:</b> АО &laquo;Банк ЦентрКредит&raquo;</p>
+<p><b>БИК:</b> KCJBKZKX</p>
+<p><b>КБе:</b> 17</p>
+<p><b>IBAN (KZT):</b> KZ518562203159744865</p>
+<p><b>Директор:</b> Быстрицкая О.А.</p>
+{rf_note}
 <p>Оплата счёта означает согласие с условиями оферты (счёт-договор).</p>
 </body></html>"""
     inv = {"num": num, "date": datetime.now().strftime("%d.%m.%Y"), "sum": f"{amount} €",
