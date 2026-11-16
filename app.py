@@ -1202,6 +1202,19 @@ def get_days_left():
     except Exception:
         return 0
 
+
+def check_access():
+    """Проверяет, есть ли у пользователя активный доступ (триал или подписка)."""
+    tariff = st.session_state.get("user_tariff")
+    if not tariff:
+        return False, "Тариф не выбран"
+    
+    days = get_days_left()
+    if days <= 0:
+        return False, f"Доступ истёк ({tariff})"
+    
+    return True, f"Осталось {days} дней"
+
 # Компактные отступы + зелёная кнопка сканирования
 st.markdown("""
 <style>
@@ -1281,42 +1294,47 @@ if current_cabs > 0:
     if st.session_state.pop("just_connected", False):
         st.success("✅ Кабинет подключён! Теперь NAMECTUS будет мониторить его автоматически.")
     if st.button("🔍 Сканировать", type="primary", key="btn_scan_main"):
-        with st.spinner("🔄 Читаем реальные данные кабинетов..."):
-            try:
-                df, scan_errors = fetch_yandex_scan()
-                if df.empty:
-                    st.warning("Из кабинетов пока нет данных. " + ("; ".join(scan_errors) if scan_errors else ""))
-                else:
-                    results = analyze_campaigns(df)
-                    results = filter_hidden(results, st.session_state.history)
-                    st.session_state.scan_results = results
-                    if scan_errors:
-                        st.caption("Часть кабинетов не читается: " + "; ".join(scan_errors))
-                    if not results:
-                        st.warning("Нет данных")
+        has_access, msg = check_access()
+        if not has_access:
+            st.error(f"⏳ {msg}. Продлите подписку в боковой панели → «Продлить или сменить тариф».")
+        else:
+            with st.spinner("🔄 Читаем реальные данные кабинетов..."):
+                try:
+                    df, scan_errors = fetch_yandex_scan()
+                    if df.empty:
+                        st.warning("Из кабинетов пока нет данных. " + ("; ".join(scan_errors) if scan_errors else ""))
                     else:
-                        crit = [r for r in results if r["status"] == "critical"]
-                        warn = [r for r in results if r["status"] == "warning"]
-                        drain = sum(r.get("overpay", 0) for r in results if r["status"] in ("critical", "warning"))
-                        hours = len(results) * 15 / 60
-                        st.session_state.scan_summary = {
-                            "cabs": int(df["project"].nunique()),
-                            "errors": len(crit) + len(warn),
-                            "critical": len(crit),
-                            "warning": len(warn),
-                            "drain": round(drain, 2),
-                            "hours": int(hours),
-                            "minutes": int(round((hours - int(hours)) * 60)),
-                        }
-                        db_log(st.session_state.user_email, "Сканирование", f"найдено результатов: {len(results)}")
-                        st.session_state.nav_screen = "scan"
-                        st.rerun()
-            except Exception as e:
-                st.error(f"Ошибка: {e}")
+                        results = analyze_campaigns(df)
+                        results = filter_hidden(results, st.session_state.history)
+                        st.session_state.scan_results = results
+                        if scan_errors:
+                            st.caption("Часть кабинетов не читается: " + "; ".join(scan_errors))
+                        if not results:
+                            st.warning("Нет данных")
+                        else:
+                            crit = [r for r in results if r["status"] == "critical"]
+                            warn = [r for r in results if r["status"] == "warning"]
+                            drain = sum(r.get("overpay", 0) for r in results if r["status"] in ("critical", "warning"))
+                            hours = len(results) * 15 / 60
+                            st.session_state.scan_summary = {
+                                "cabs": int(df["project"].nunique()),
+                                "errors": len(crit) + len(warn),
+                                "critical": len(crit),
+                                "warning": len(warn),
+                                "drain": round(drain, 2),
+                                "hours": int(hours),
+                                "minutes": int(round((hours - int(hours)) * 60)),
+                            }
+                            db_log(st.session_state.user_email, "Сканирование", f"найдено результатов: {len(results)}")
+                            st.session_state.nav_screen = "scan"
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
 else:
     col_msg, col_empty = st.columns([3, 1])
     with col_msg:
         st.info("Подключите хотя бы один рекламный кабинет, чтобы начать сканирование.")
+
 # --- РЕЗУЛЬТАТЫ СКАНА: сводка + проекты по алфавиту, раскрывающиеся ---
 if st.session_state.get("scan_results"):
     results = st.session_state.scan_results
