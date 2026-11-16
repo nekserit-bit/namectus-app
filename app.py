@@ -906,15 +906,18 @@ if not st.session_state.auth_passed:
                 elif not is_strong:
                     st.error("Пароль слишком слабый! Выполните все требования выше.")
                 else:
-                    # Генерируем и отправляем реальный код
-                    code = generate_verification_code()
-                    if send_verification_code(reg_email, code):
-                        st.session_state.verification_code = code
-                        st.session_state.verification_email = reg_email
-                        st.success(f"Код отправлен на {reg_email}. Проверьте почту.")
+                    last = st.session_state.get("last_code_time")
+                    if last and (datetime.now() - last).total_seconds() < 60:
+                        st.error("⏳ Код уже отправлен. Подождите минуту перед повторным запросом.")
                     else:
-                        st.error("Не удалось отправить код. Попробуйте позже.")
-
+                        code = generate_verification_code()
+                        if send_verification_code(reg_email, code):
+                            st.session_state.verification_code = code
+                            st.session_state.verification_email = reg_email
+                            st.session_state.last_code_time = datetime.now()
+                            st.success(f"Код отправлен на {reg_email}. Проверьте почту.")
+                        else:
+                            st.error("Не удалось отправить код. Попробуйте позже.")
             # 3. Поле для кода (ВСЕГДА показывается)
             reg_code = st.text_input(t("code_from_message"), key="reg_code_new")
             
